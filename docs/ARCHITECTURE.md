@@ -114,6 +114,7 @@ Each screen is written once, left to right. While an RTL language is active, `i1
 - Providers are tested against invented payloads in each source's real field shape.
 - UI tests open every window in demo mode with the data folder redirected to a temporary directory (`tests/test_ui.py`).
 - Static checks guard translation coverage and hidden bidirectional characters ("Trojan Source").
+- The parsers for downloaded data are fuzzed: `fuzz/fuzz_calendar_data.py` turns random bytes into hostile provider payloads and checks that nothing crashes, text stays length-capped, every event renders in every time zone, and exports stay safe. It runs coverage-guided with Atheris in CI, and as a quick deterministic test locally (`tests/test_fuzz.py`).
 
 CI runs the tests on Windows, macOS and Linux, and enforces the coverage floor set in `pyproject.toml`.
 

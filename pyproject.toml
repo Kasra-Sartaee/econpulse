@@ -85,6 +85,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S311", "B011"]
 "tools/*" = ["S", "E402"]  # scripts set sys.path before importing the package
+"fuzz/*" = ["S101", "E402"]  # assertions are the fuzz checks
 "econpulse/locales/*" = ["E501"]
 
 [tool.ruff.lint.isort]

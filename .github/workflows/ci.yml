@@ -37,6 +37,7 @@ jobs:
           pip-audit -r requirements-build.lock --require-hashes --disable-pip
           pip-audit -r requirements-dev.lock --require-hashes --disable-pip
           pip-audit -r requirements.lock --require-hashes --disable-pip
+          pip-audit -r requirements-fuzz.lock --require-hashes --disable-pip
 
   test:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})

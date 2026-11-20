@@ -1,0 +1,3 @@
+[{"id": 101, "time": "2026-11-20T13:30:00.000Z", "currency": "USD", "name": "Invented CPI m/m", "importance": "high", "type": "indicator", "timeMode": "exact", "actual": 0.3, "forecast": 0.2, "previous": 0.4, "revisedPrevious": null, "unit": "percent", "multiplier": null, "digits": 1, "period": "2026-10-01", "sourceUrl": "https://example.test/cpi"},
+ {"id": 102, "time": "2026-11-21T00:00:00.000Z", "currency": "JPY", "name": "Invented Holiday", "importance": "none", "type": "holiday", "timeMode": "date"},
+ {"id": 103, "time": "2026-11-22T09:00:00.000Z", "currency": "EUR", "name": "Invented Orders", "importance": "medium", "type": "indicator", "timeMode": "tentative", "forecast": 152, "previous": 148.5, "unit": "number", "multiplier": "thousands", "digits": 0}]

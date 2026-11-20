@@ -27,6 +27,7 @@ First open-source release.
 - Guide for adding data sources (`docs/PROVIDERS.md`) and an architecture guide with diagrams (`docs/ARCHITECTURE.md`).
 - Project website (GitHub Pages), a demo animation, and tools that regenerate the screenshots and artwork from the real app.
 - CI on Windows, macOS and Linux with a test-coverage floor (84% today), and a downloadable Windows build for every change. Release and CI workflows, CodeQL and OpenSSF Scorecard.
+- Fuzzing of every parser for downloaded data (Atheris in CI, plus a quick deterministic version in the test suite).
 - End-to-end UI tests for every window, and checks that versions agree, documentation links resolve and every dependency stays pinned.
 
 ### Security
@@ -43,6 +44,7 @@ First open-source release.
 - Settings defaults could be changed by mistake through a shared list.
 - Timers firing during exit.
 - Quitting while an alert pop-up was on screen could leave EconPulse running with no window.
+- Found by fuzzing: a release dated near the year 1 or 9999 broke drawing in every time zone (now ignored), and unusual figures from biquote (huge numbers, odd units or decimal places) could stop a refresh. Unexpected data from any source now falls back to saved data or the Forex Factory export instead of failing.
 
 ### Removed
 - Reading forexfactory.com pages, the BeautifulSoup dependency, and leftover 3.1 compatibility code.

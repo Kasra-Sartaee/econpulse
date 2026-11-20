@@ -1,0 +1,2 @@
+{"total": 2, "events": [{"id": "x1", "name": "Invented GDP q/q", "country": "US", "release_at_utc": "2026-11-20T13:30:00Z", "impact": "high", "actual": "0.5", "consensus": "0.4", "prior": "0.3", "unit": "%", "period": "Q3", "source_name": "Invented Agency", "url": "https://example.test/gdp"},
+ {"id": "x2", "name": "Invented Market Holiday", "country": "GB", "date": "2026-11-23", "holiday_status": true, "category": "market-holidays", "all_day": true}]}

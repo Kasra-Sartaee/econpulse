@@ -69,7 +69,7 @@ class ProjectTests(unittest.TestCase):
                 self.assertRegex(action, r'@[0-9a-f]{40}$', f'{workflow.name}: {action} is not pinned to a SHA')
 
     def test_locked_requirements_have_hashes(self):
-        for lock in ('requirements.lock', 'requirements-build.lock', 'requirements-dev.lock'):
+        for lock in sorted(p.name for p in ROOT.glob('requirements*.lock')):
             text = (ROOT / lock).read_text(encoding='utf-8')
             packages = re.findall(r'(?m)^([A-Za-z0-9_.-]+)==', text)
             self.assertTrue(packages, lock)

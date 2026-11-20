@@ -247,7 +247,7 @@ Want another source? See [docs/PROVIDERS.md](docs/PROVIDERS.md).
 - **Network requests** go only to your data source (plus the Forex Factory export as a fallback). They also go to GitHub once a day if you switch on **Tell me when a new version is out**, which is off by default. Requests identify the app as `EconPulse/<version>` and send nothing about you.
 - **Everything stays local** in your data folder: `%APPDATA%\EconPulse` on Windows, `~/Library/Application Support/EconPulse` on macOS, `~/.config/EconPulse` on Linux. That covers settings (including an optional API key), cached calendar data, alert history, trading notes (plain text) and a small log. **Settings → About → Open data folder** takes you there.
 - **Hardened input handling.** Everything is fetched over HTTPS only, with size-capped responses, length-limited fields and validated settings. Links open only if they're `https://`, and CSV exports are protected against spreadsheet formula injection.
-- **Continuously checked** by [CodeQL](https://codeql.github.com/), [Bandit](https://bandit.readthedocs.io/), [pip-audit](https://pypi.org/project/pip-audit/), [OpenSSF Scorecard](https://scorecard.dev/) and Dependabot. All GitHub Actions are pinned to commit hashes.
+- **Continuously checked** by [CodeQL](https://codeql.github.com/), [Bandit](https://bandit.readthedocs.io/), [pip-audit](https://pypi.org/project/pip-audit/), [OpenSSF Scorecard](https://scorecard.dev/) and Dependabot. The code that reads downloaded data is [fuzzed](fuzz/fuzz_calendar_data.py) with [Atheris](https://github.com/google/atheris) on every change. All GitHub Actions and dependencies are pinned to hashes.
 
 Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md).
 

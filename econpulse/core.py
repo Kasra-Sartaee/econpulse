@@ -46,7 +46,7 @@ _CURRENCY = re.compile(r'[A-Z]{3}')
 
 def _text(value, limit: int = 300) -> str:
     """Provider text, whitespace-normalised and length-capped (defensive against odd feeds)."""
-    return ' '.join(str(value or '').split())[:limit]
+    return ' '.join(str(value or '').split())[:limit].rstrip()
 
 
 def normalize_impact(value: object, title: str) -> str:
@@ -147,6 +147,9 @@ def parse_feed(body: object) -> list[Event]:
             continue
         try:
             stamp = parse_date(record.get('date') or record.get('time'))
+            # Absurd years can't be shown in every time zone (found by fuzzing; see fuzz/).
+            if not 1970 <= stamp.astimezone(UTC).year <= 2200:
+                continue
         except (ValueError, TypeError, OverflowError):
             continue
         impact = normalize_impact(record.get('impact'), title)

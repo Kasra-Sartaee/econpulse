@@ -109,6 +109,10 @@ def fetch_events(
         problem = f'{primary.name}: {_describe(exc)}'
         retry_after = exc.retry_after if isinstance(exc, RateLimited) else None
         log.warning('calendar fetch failed (%s)', problem)
+    except Exception:
+        # A parser bug or a truly malformed response must not skip the fallbacks below.
+        log.exception('%s sent data EconPulse could not read', primary.name)
+        problem, retry_after = f'{primary.name}: unreadable response', None
 
     cached = load_cache()
     if cached.events and cached.has_actuals and cached.at and now - cached.at < FRESH_ENOUGH:
@@ -134,6 +138,9 @@ def fetch_events(
         except ProviderError as exc:
             problem += f'; {fallback.name}: {_describe(exc)}'
             log.warning('fallback fetch failed (%s)', _describe(exc))
+        except Exception:
+            problem += f'; {fallback.name}: unreadable response'
+            log.exception('%s sent data EconPulse could not read', fallback.name)
 
     if cached.events:
         cached.warning = f'Offline. {problem}.'

@@ -1,0 +1,49 @@
+name: Fuzzing
+
+# Coverage-guided fuzzing (Atheris + libFuzzer) of the code that reads
+# downloaded calendar data: fuzz/fuzz_calendar_data.py. Short runs on every
+# change, a longer one every week. A crash fails the job and the input that
+# caused it is uploaded as an artifact; reproduce it locally with
+#   python fuzz/fuzz_calendar_data.py <crash file>
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '13 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz calendar parsers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Pinned, hash-checked Atheris
+        run: python -m pip install --require-hashes -r requirements-fuzz.lock
+      - name: Fuzz
+        env:
+          SECONDS_TO_RUN: ${{ github.event_name == 'schedule' && '900' || '120' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/corpus" "$RUNNER_TEMP/crashes"
+          python fuzz/fuzz_calendar_data.py -max_total_time="$SECONDS_TO_RUN" -timeout=10 -rss_limit_mb=2048 \
+            -artifact_prefix="$RUNNER_TEMP/crashes/" "$RUNNER_TEMP/corpus" fuzz/corpus
+      - name: Keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crash-${{ github.run_id }}
+          path: ${{ runner.temp }}/crashes
+          if-no-files-found: ignore

@@ -7,6 +7,7 @@ non-commercial projects"; a visible credit is appreciated, not required.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import math
 
 from ..core import Event, parse_feed
 from .base import Provider, ProviderError, http_get_json
@@ -22,19 +23,24 @@ def format_value(value, unit, multiplier, digits) -> str:
 
     Values arrive already scaled to the multiplier, with ``digits`` decimals.
     """
+    # Anything can arrive here, so every type is handled (found by fuzzing; see fuzz/).
     if value is None or isinstance(value, bool):
         return ''
     try:
         number = float(value)
+    except OverflowError:  # an integer too large for a float
+        return ''
     except (TypeError, ValueError):
-        return str(value)[:40]
-    places = digits if isinstance(digits, int) and 0 <= digits <= 6 else 2
+        return str(value)[:40] if isinstance(value, str) else ''
+    if not math.isfinite(number):
+        return ''
+    places = digits if isinstance(digits, int) and not isinstance(digits, bool) and 0 <= digits <= 6 else 2
     text = f'{number:.{places}f}'
     if text.startswith('-') and float(text) == 0:
         text = text[1:]
     if unit == 'percent':
         return text + '%'
-    return text + _SUFFIX.get(multiplier or '', '')
+    return text + (_SUFFIX.get(multiplier, '') if isinstance(multiplier, str) else '')
 
 
 def _period(value) -> str:

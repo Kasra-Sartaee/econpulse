@@ -37,4 +37,4 @@ There is no telemetry.
 - CSV exports neutralise cells that spreadsheets would run as formulas.
 - Damaged or edited settings fall back to safe defaults.
 - Releases are built only by GitHub Actions, from pinned, hash-checked dependencies. Each one ships SHA-256 checksums, a CycloneDX software bill of materials (SBOM) and signed build provenance. Verify a download with `gh attestation verify EconPulse-<version>-Windows.zip --repo Kasra-Sartaee/econpulse`.
-- Every change is checked by CodeQL, `bandit` and `pip-audit`. OpenSSF Scorecard tracks supply-chain practices, and Dependabot proposes dependency and Action updates. Workflows run with read-only tokens by default, and every Action is pinned to a commit hash.
+- Every change is checked by CodeQL, `bandit` and `pip-audit`, and the parsers for downloaded data are fuzzed with Atheris (`fuzz/`). OpenSSF Scorecard tracks supply-chain practices, and Dependabot proposes dependency and Action updates. Workflows run with read-only tokens by default, and every Action is pinned to a commit hash.

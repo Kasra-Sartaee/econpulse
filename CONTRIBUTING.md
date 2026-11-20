@@ -37,6 +37,8 @@ python -m coverage run -m unittest discover -s tests && python -m coverage repor
 
 Please add or update tests for behaviour you change. Tests that need a window skip themselves where Tk can't open one. CI fails if line coverage (measured on Windows) drops below the floor in `pyproject.toml`; `tests/test_ui.py` shows how to drive whole windows in demo mode without touching real settings.
 
+The parsers for downloaded data are also **fuzzed** (`fuzz/fuzz_calendar_data.py`): a quick deterministic version runs with the tests on every platform, and coverage-guided fuzzing with Atheris runs in CI. If you change a parser, add an example to `fuzz/corpus/` and keep the checks in the fuzz target true.
+
 Each pull request also gets a **Windows build** you can download from the workflow run's *Artifacts* to try the change without installing Python.
 
 ## Code map
