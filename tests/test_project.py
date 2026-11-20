@@ -69,12 +69,21 @@ class ProjectTests(unittest.TestCase):
                 self.assertRegex(action, r'@[0-9a-f]{40}$', f'{workflow.name}: {action} is not pinned to a SHA')
 
     def test_locked_requirements_have_hashes(self):
-        for lock in ('requirements-build.lock', 'requirements-dev.lock'):
+        for lock in ('requirements.lock', 'requirements-build.lock', 'requirements-dev.lock'):
             text = (ROOT / lock).read_text(encoding='utf-8')
             packages = re.findall(r'(?m)^([A-Za-z0-9_.-]+)==', text)
             self.assertTrue(packages, lock)
             for block in re.split(r'(?m)^(?=[A-Za-z0-9_.-]+==)', text)[1:]:
                 self.assertIn('--hash=sha256:', block, f'{lock}: {block.splitlines()[0]} has no hash')
+
+    def test_automated_installs_are_hash_checked(self):
+        # CI and run.sh install only from hash-locked files (OpenSSF Scorecard: Pinned-Dependencies).
+        scripts = [ROOT / 'run.sh', *sorted((ROOT / '.github' / 'workflows').glob('*.yml'))]
+        for script in scripts:
+            for line in script.read_text(encoding='utf-8').splitlines():
+                if re.search(r'\bpip install\b', line):
+                    hashed = r'--require-hashes -r requirements[\w-]*\.lock'
+                    self.assertRegex(line, hashed, f'{script.name}: {line.strip()}')
 
 
 if __name__ == '__main__':

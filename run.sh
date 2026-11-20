@@ -6,6 +6,6 @@ cd "$(dirname "$0")"
 PYTHON="${PYTHON:-python3}"
 if [ ! -d .venv ]; then
   "$PYTHON" -m venv .venv
-  .venv/bin/python -m pip install --quiet -r requirements.txt
+  .venv/bin/python -m pip install --quiet --require-hashes -r requirements.lock
 fi
 exec .venv/bin/python main.py "$@"
