@@ -1,0 +1,81 @@
+"""Repository health: versions agree, links resolve, the supply chain stays pinned."""
+
+from pathlib import Path
+import re
+import unittest
+from urllib.parse import unquote
+
+from helpers import ROOT
+
+from econpulse import REPO, __version__
+
+DOCS = [
+    'README.md',
+    'README_FA.md',
+    'CONTRIBUTING.md',
+    'SECURITY.md',
+    'SUPPORT.md',
+    'CHANGELOG.md',
+    'docs/ARCHITECTURE.md',
+    'docs/PROVIDERS.md',
+    'docs/TRANSLATING.md',
+]
+LINK = re.compile(r'\]\(([^)\s]+)\)|(?:src|href|srcset)="([^"]+)"')
+
+
+def local_targets(path: Path):
+    """Relative links and images in a Markdown or HTML file (not web URLs or anchors)."""
+    text = path.read_text(encoding='utf-8')
+    text = re.sub(r'```.*?```', '', text, flags=re.S)  # ignore code samples
+    for match in LINK.finditer(text):
+        target = match.group(1) or match.group(2)
+        if re.match(r'^(https?:|mailto:|#)', target) or '{{' in target:
+            continue
+        yield unquote(target.split('#', 1)[0])
+
+
+class ProjectTests(unittest.TestCase):
+    def test_version_is_the_same_everywhere(self):
+        citation = (ROOT / 'CITATION.cff').read_text(encoding='utf-8')
+        self.assertRegex(citation, rf'(?m)^version: {re.escape(__version__)}$')
+        changelog = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        self.assertIn(f'## [{__version__}] - ', changelog)
+
+    def test_repository_is_configured(self):
+        self.assertFalse(REPO.startswith('OWNER/'), 'set REPO in econpulse/__init__.py')
+        for name in [*DOCS, 'pyproject.toml', 'CITATION.cff', 'site/index.html']:
+            self.assertNotIn('OWNER/', (ROOT / name).read_text(encoding='utf-8'), name)
+
+    def test_relative_links_and_images_exist(self):
+        for name in DOCS:
+            path = ROOT / name
+            for target in local_targets(path):
+                self.assertTrue((path.parent / target).exists(), f'{name} links to missing {target}')
+
+    def test_website_assets_exist(self):
+        # The Pages workflow copies docs/assets -> assets/ and docs/screenshots -> screenshots/.
+        mapping = {'assets/': ROOT / 'docs' / 'assets', 'screenshots/': ROOT / 'docs' / 'screenshots'}
+        for target in local_targets(ROOT / 'site' / 'index.html'):
+            if target == 'assets/icon.png':
+                self.assertTrue((ROOT / 'econpulse' / 'assets' / 'econpulse.png').exists())
+                continue
+            prefix = next(p for p in mapping if target.startswith(p))
+            self.assertTrue((mapping[prefix] / target[len(prefix) :]).exists(), target)
+
+    def test_every_action_is_pinned_to_a_commit(self):
+        uses = re.compile(r'^\s*(?:-\s*)?uses:\s*(\S+)', re.M)
+        for workflow in sorted((ROOT / '.github' / 'workflows').glob('*.yml')):
+            for action in uses.findall(workflow.read_text(encoding='utf-8')):
+                self.assertRegex(action, r'@[0-9a-f]{40}$', f'{workflow.name}: {action} is not pinned to a SHA')
+
+    def test_locked_requirements_have_hashes(self):
+        for lock in ('requirements-build.lock', 'requirements-dev.lock'):
+            text = (ROOT / lock).read_text(encoding='utf-8')
+            packages = re.findall(r'(?m)^([A-Za-z0-9_.-]+)==', text)
+            self.assertTrue(packages, lock)
+            for block in re.split(r'(?m)^(?=[A-Za-z0-9_.-]+==)', text)[1:]:
+                self.assertIn('--hash=sha256:', block, f'{lock}: {block.splitlines()[0]} has no hash')
+
+
+if __name__ == '__main__':
+    unittest.main()

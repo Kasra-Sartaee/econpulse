@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "econpulse"
+dynamic = ["version"]
+description = "Economic calendar for your desktop: a floating widget and full calendar with countdowns, alerts and Actual/Forecast/Previous values."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Aref Hosseini" }, { name = "Kasra Sartaee" }]
+requires-python = ">=3.10"
+dependencies = [
+    "pystray>=0.19.5,<1",
+    "Pillow>=13,<14",
+    "tzlocal>=5,<6",
+    "tzdata>=2024.1",
+]
+keywords = ["economic calendar", "forex", "trading", "macroeconomics", "desktop widget", "tkinter", "persian"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Environment :: MacOS X",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Natural Language :: English",
+    "Natural Language :: Persian",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Office/Business :: Scheduling",
+]
+
+[project.urls]
+Homepage = "https://kasra-sartaee.github.io/econpulse/"
+Source = "https://github.com/Kasra-Sartaee/econpulse"
+Download = "https://github.com/Kasra-Sartaee/econpulse/releases/latest"
+Documentation = "https://github.com/Kasra-Sartaee/econpulse#readme"
+Issues = "https://github.com/Kasra-Sartaee/econpulse/issues"
+Changelog = "https://github.com/Kasra-Sartaee/econpulse/blob/main/CHANGELOG.md"
+
+[project.gui-scripts]
+econpulse = "econpulse.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "econpulse.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["econpulse*"]
+
+[tool.setuptools.package-data]
+econpulse = ["assets/*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "PIE", "RUF"]
+ignore = [
+    "E741",    # short names like l/t/r/b for rectangle edges are idiomatic here
+    "S110",    # try/except/pass is deliberate around optional OS integrations
+    "S112",
+    "SIM105",  # contextlib.suppress is not clearer than try/except here
+    "SIM108",
+    "RUF001",  # Persian strings legitimately contain Arabic-script characters
+    "RUF002",
+    "RUF003",
+    "RUF012",  # class-level constant tables
+    "B006",    # Tk-style cnf={} default, never mutated
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S311", "B011"]
+"tools/*" = ["S", "E402"]  # scripts set sys.path before importing the package
+"econpulse/locales/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["econpulse"]
+
+[tool.coverage.run]
+source = ["econpulse"]
+
+[tool.coverage.report]
+# Measured on Windows, where every code path exists. Raise it as tests grow.
+fail_under = 80
+skip_covered = true
+exclude_also = ["if __name__ == .__main__.:"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "tools", "build", "dist"]
+# try/except/pass guards optional OS integrations (DWM, tray, sound); failures there are cosmetic.
+skips = ["B110"]

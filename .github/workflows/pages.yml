@@ -1,0 +1,56 @@
+name: Website
+
+# Publishes site/ (plus the README artwork and screenshots) to GitHub Pages:
+# https://kasra-sartaee.github.io/econpulse/
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - docs/assets/**
+      - docs/screenshots/**
+      - econpulse/__init__.py
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/assets _site/screenshots
+          cp site/index.html _site/
+          cp docs/assets/* _site/assets/
+          cp econpulse/assets/econpulse.png _site/assets/icon.png
+          cp docs/screenshots/*.png _site/screenshots/
+          version=$(python3 -c "import econpulse; print(econpulse.__version__)")
+          sed -i "s/{{VERSION}}/${version}/g" _site/index.html
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

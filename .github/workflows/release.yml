@@ -1,0 +1,70 @@
+name: Release
+
+# Push a tag like v3.3.0 (matching econpulse/__init__.py) to build the Windows
+# app and open a *draft* release with:
+#   EconPulse-<v>-Windows.zip              the app
+#   EconPulse-<v>-SBOM.cdx.json            software bill of materials (CycloneDX)
+#   EconPulse-<v>.sigstore.json            signed build provenance for both files
+#   SHA256SUMS.txt                         checksums
+# Review the draft, then publish it.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the draft release
+      id-token: write # build-provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Tag must match the app version
+        shell: bash
+        run: |
+          version=$(python -c "import econpulse; print(econpulse.__version__)")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match econpulse.__version__ ($version)"; exit 1
+          fi
+      - name: Pinned, hash-checked build tools
+        run: python -m pip install --require-hashes -r requirements-build.lock
+      - run: python -m unittest discover -s tests
+      - run: python tools/build_windows.py
+      - name: Software bill of materials
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/sbom"
+          "$RUNNER_TEMP/sbom/Scripts/python" -m pip install --require-hashes -r requirements-dev.lock
+          "$RUNNER_TEMP/sbom/Scripts/python" tools/sbom.py
+      - name: Checksums
+        shell: bash
+        working-directory: dist
+        run: sha256sum EconPulse-*-Windows.zip EconPulse-*-SBOM.cdx.json > SHA256SUMS.txt
+      - id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/EconPulse-*-Windows.zip
+            dist/EconPulse-*-SBOM.cdx.json
+      - name: Draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cp "$BUNDLE" "dist/EconPulse-$version.sigstore.json"
+          python tools/release_notes.py "$version" > dist/RELEASE_NOTES.md
+          gh release create "$GITHUB_REF_NAME" \
+            dist/EconPulse-*-Windows.zip dist/EconPulse-*-SBOM.cdx.json \
+            "dist/EconPulse-$version.sigstore.json" dist/SHA256SUMS.txt \
+            --draft --title "EconPulse $version" --notes-file dist/RELEASE_NOTES.md

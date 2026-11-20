@@ -1,0 +1,21 @@
+name: Data source request
+description: Suggest a calendar data provider
+labels: [data source]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and API documentation URL
+    validations:
+      required: true
+  - type: input
+    id: terms
+    attributes:
+      label: Link to its terms of use
+      description: EconPulse only adds sources whose terms allow direct use by an open-source desktop app (see docs/PROVIDERS.md).
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it add? (countries, Actual values, reliability...)

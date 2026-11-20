@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: If you use EconPulse in your work, please cite it as below.
+title: EconPulse
+abstract: >-
+  A free, open-source economic calendar for the desktop: a floating widget and
+  a full calendar with countdowns, alerts and Actual, Forecast and Previous
+  values, in English and Persian.
+type: software
+authors:
+  - given-names: Aref
+    family-names: Hosseini
+  - given-names: Kasra
+    family-names: Sartaee
+repository-code: https://github.com/Kasra-Sartaee/econpulse
+url: https://kasra-sartaee.github.io/econpulse/
+license: MIT
+version: 3.3.0
+date-released: '2026-11-20'
+keywords:
+  - economic calendar
+  - forex
+  - macroeconomics
+  - desktop application

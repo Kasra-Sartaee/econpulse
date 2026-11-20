@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.build-venv/
+.pytest_cache/
+.ruff_cache/
+
+# Build output
+build/
+dist/
+*.spec
+
+# Local files
+*.log
+.env
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

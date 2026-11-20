@@ -1,0 +1,16 @@
+name: Translation
+description: Add or fix a language
+labels: [translation]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      placeholder: e.g. German (de)
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: For a new language, see docs/TRANSLATING.md. Pull requests are very welcome.
