@@ -15,6 +15,7 @@ First open-source release.
 - By default, only the nine major currencies are shown. A new setting adds the others (ZAR, TRY, MXN...).
 - Faster start: the Windows app is a folder (`EconPulse.exe` + `_internal`) and opens in about 0.25 s instead of 1.7 s.
 - The code is now an `econpulse` package (`python -m econpulse`), with an installable `pyproject.toml`.
+- Running from source now needs Python 3.11 or newer (3.10 reached end of life in October 2026, and Pillow 13's security fixes need 3.11). The Windows download includes its own Python.
 
 ### Added
 - **Polite polling**: automatic backoff after failures (30 → 60 → 120 min), respect for a source's `Retry-After`, and the next attempt time shown in the status line.

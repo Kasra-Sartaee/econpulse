@@ -1,6 +1,6 @@
 """Domain model: parsing, time handling, alerts."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 import unittest
 
 import helpers  # noqa: F401  (makes the package importable)
@@ -10,7 +10,7 @@ from econpulse.core import AlertEngine, desired_timezone, parse_date, parse_feed
 
 class EconomicCalendarTests(unittest.TestCase):
     def setUp(self):
-        self.now = datetime(2026, 11, 11, 12, 0, tzinfo=timezone.utc)
+        self.now = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
     def event(self, minutes=10, impact='High', currency='USD', name='CPI m/m'):
         raw = [
@@ -28,7 +28,7 @@ class EconomicCalendarTests(unittest.TestCase):
     def test_bank_holiday_has_own_impact_even_with_low_marker(self):
         e = self.event(impact='Low', name='Bank Holiday')
         self.assertEqual(e.impact, 'Holiday')
-        self.assertEqual(e.when_text(timezone.utc), 'ALL DAY')
+        self.assertEqual(e.when_text(UTC), 'ALL DAY')
         self.assertEqual(e.countdown(self.now), 'HOLIDAY')
 
     def test_holiday_keeps_source_civil_date_across_zone_boundaries(self):
@@ -40,7 +40,7 @@ class EconomicCalendarTests(unittest.TestCase):
     def test_timezone_requires_offset(self):
         with self.assertRaises(ValueError):
             parse_date('2026-11-11T10:00:00')
-        self.assertEqual(self.event().instant.tzinfo, timezone.utc)
+        self.assertEqual(self.event().instant.tzinfo, UTC)
 
     def test_tehran_offset(self):
         self.assertEqual(self.now.astimezone(desired_timezone('Tehran (UTC+03:30)')).strftime('%H:%M'), '15:30')
@@ -79,8 +79,8 @@ class EconomicCalendarTests(unittest.TestCase):
                 {'country': 'JPY', 'title': 'Fri', 'date': '2026-11-13T11:00:00+00:00', 'impact': 'High'},
             ]
         )
-        events.sort(key=lambda e: (e.display_day(timezone.utc), e.instant))
-        groups = weekly_sections(events, timezone.utc)
+        events.sort(key=lambda e: (e.display_day(UTC), e.instant))
+        groups = weekly_sections(events, UTC)
         self.assertEqual([day.isoformat() for day, _ in groups], ['2026-11-09', '2026-11-11', '2026-11-13'])
         self.assertEqual([len(group) for _, group in groups], [1, 2, 1])
 

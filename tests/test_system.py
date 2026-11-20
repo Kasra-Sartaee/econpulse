@@ -1,6 +1,6 @@
 """OS integration: safe links, start-at-login files, single instance, update check."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import plistlib
 import sys
 import unittest
@@ -87,7 +87,7 @@ class UpdateCheckTests(unittest.TestCase):
         self.assertFalse(updates.is_newer('banana', '3.3.0'))
 
     def test_daily_interval(self):
-        now = datetime(2026, 11, 20, 12, tzinfo=timezone.utc)
+        now = datetime(2026, 11, 20, 12, tzinfo=UTC)
         self.assertTrue(updates.due('', now))
         self.assertTrue(updates.due('garbage', now))
         self.assertFalse(updates.due((now - timedelta(hours=3)).isoformat(), now))

@@ -11,7 +11,7 @@ Order of preference on each refresh:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import logging
 
 from .core import Event, parse_feed
@@ -90,7 +90,7 @@ def _describe(exc: Exception) -> str:
 def fetch_events(
     provider_id: str = DEFAULT, *, key: str = '', timeout: float = 17, now: datetime | None = None
 ) -> FeedResult:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     primary = PROVIDERS.get(provider_id) or PROVIDERS[DEFAULT]
     try:
         events = primary.fetch(now, key=key, timeout=timeout)

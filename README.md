@@ -20,7 +20,7 @@
 
 <p>
 <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-111113?style=flat-square"></a>
-<img alt="Python 3.10 to 3.13" src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-3776ab?style=flat-square&logo=python&logoColor=white">
+<img alt="Python 3.11 to 3.13" src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-3776ab?style=flat-square&logo=python&logoColor=white">
 <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-111113?style=flat-square">
 <a href="README_FA.md"><img alt="English and Persian" src="https://img.shields.io/badge/languages-English%20%7C%20%D9%81%D8%A7%D8%B1%D8%B3%DB%8C-111113?style=flat-square"></a>
 <a href="https://github.com/astral-sh/ruff"><img alt="Code style: Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square"></a>
@@ -192,7 +192,7 @@ gh attestation verify EconPulse-<version>-Windows.zip --repo Kasra-Sartaee/econp
 
 ## Run from source
 
-You need Python 3.10 or newer with Tk. It's included in the python.org installers; on Debian and Ubuntu, install `python3-tk`.
+You need Python 3.11 or newer with Tk. It's included in the python.org installers; on Debian and Ubuntu, install `python3-tk`.
 
 ```sh
 git clone https://github.com/Kasra-Sartaee/econpulse.git

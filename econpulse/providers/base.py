@@ -4,7 +4,7 @@ interface every provider implements."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 import json
 from urllib.error import HTTPError, URLError
@@ -56,7 +56,7 @@ def _retry_after(value) -> int | None:
         return min(int(value), 24 * 3600)
     try:
         when = parsedate_to_datetime(value)
-        return max(0, min(int((when - datetime.now(timezone.utc)).total_seconds()), 24 * 3600))
+        return max(0, min(int((when - datetime.now(UTC)).total_seconds()), 24 * 3600))
     except (TypeError, ValueError, OverflowError):
         return None
 

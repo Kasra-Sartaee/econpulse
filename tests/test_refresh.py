@@ -2,7 +2,7 @@
 
 from argparse import Namespace
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import os
 from pathlib import Path
 import tempfile
@@ -16,7 +16,7 @@ from econpulse import theme
 from econpulse.core import parse_feed
 from econpulse.event_list import EventCanvas, NextUp
 
-NOW = datetime(2026, 11, 12, 12, 0, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 12, 12, 0, 30, tzinfo=UTC)
 
 
 def feed(*minutes, actual=''):
@@ -60,42 +60,42 @@ class RetainedDrawingTests(unittest.TestCase):
 
     def test_unchanged_data_keeps_items_hover_and_moves_the_now_label(self):
         events = feed(-120, -60, 60, 120)
-        self.list.update_data(events, timezone.utc)
+        self.list.update_data(events, UTC)
         self.root.update()
         self.assertEqual(self.now_label(), ['12:00'])
         hover = next(i for i, r in enumerate(self.list.rows) if r.kind == 'event')
         self.list.set_hover(hover)
         before = self.items()
         self.clock[0] = NOW + timedelta(minutes=1)
-        self.list.update_data(list(events), timezone.utc)  # what the per-minute render does
+        self.list.update_data(list(events), UTC)  # what the per-minute render does
         self.assertEqual(self.list.hover_idx, hover)
         self.assertEqual(self.now_label(), ['12:01'])
         self.assertEqual(self.items(), before)
 
     def test_changed_data_day_or_marker_still_redraw(self):
         events = feed(-120, 60, 120)
-        self.list.update_data(events, timezone.utc)
+        self.list.update_data(events, UTC)
         before = self.items()
         revised = [replace(events[0], actual='1.2%'), *events[1:]]
-        self.list.update_data(revised, timezone.utc)
+        self.list.update_data(revised, UTC)
         self.assertNotEqual(self.items(), before)
         self.assertEqual(self.list.events[0].actual, '1.2%')
         before = self.items()
         self.clock[0] = NOW + timedelta(minutes=61)  # 'Release 60' passed: marker moves
-        self.list.update_data(revised, timezone.utc)
+        self.list.update_data(revised, UTC)
         self.assertNotEqual(self.items(), before)
         before = self.items()
         self.clock[0] = NOW + timedelta(days=1)  # new day: Today/Tomorrow headings change
-        self.list.update_data(revised, timezone.utc)
+        self.list.update_data(revised, UTC)
         self.assertNotEqual(self.items(), before)
 
     def test_first_empty_update_draws_the_empty_state(self):
-        self.list.update_data([], timezone.utc)
+        self.list.update_data([], UTC)
         texts = [self.list.cv.itemcget(i, 'text') for i in self.items() if self.list.cv.type(i) == 'text']
         self.assertIn('Nothing to show', texts)
 
     def test_keyboard_scrolling(self):
-        self.list.update_data(feed(*range(-600, 600, 20)), timezone.utc)
+        self.list.update_data(feed(*range(-600, 600, 20)), UTC)
         self.root.update()
         self.list.key_scroll('End')
         self.assertAlmostEqual(self.list.cv.yview()[1], 1.0)
@@ -113,12 +113,12 @@ class NextUpTests(unittest.TestCase):
             hero.pack(fill='x')
             root.update()
             event = feed(90)[0]
-            hero.set(event, timezone.utc, NOW)
+            hero.set(event, UTC, NOW)
             before, text = hero.find_all(), hero.count_text
-            hero.set(event, timezone.utc, NOW + timedelta(minutes=1))
+            hero.set(event, UTC, NOW + timedelta(minutes=1))
             self.assertEqual(hero.find_all(), before)
             self.assertNotEqual(hero.count_text, text)
-            hero.set(feed(200)[0], timezone.utc, NOW)
+            hero.set(feed(200)[0], UTC, NOW)
             self.assertNotEqual(hero.find_all(), before)
         finally:
             root.destroy()

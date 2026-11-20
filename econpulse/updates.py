@@ -8,7 +8,7 @@ only the app's User-Agent.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import logging
 import re
 
@@ -36,7 +36,7 @@ def is_newer(candidate, current) -> bool:
 
 
 def due(last_check, now: datetime | None = None) -> bool:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     try:
         return now - datetime.fromisoformat(last_check) >= INTERVAL
     except (TypeError, ValueError):

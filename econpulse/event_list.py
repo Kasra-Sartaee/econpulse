@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import UTC
 import tkinter as tk
 
 from . import i18n
@@ -33,7 +33,7 @@ class NextUp(tk.Canvas):
         self.p = palette
         self.open_event = open_event
         self.event = None
-        self.tz = timezone.utc
+        self.tz = UTC
         self.count_item = None
         self.count_text = ''
         self.count_colour = ''
@@ -91,9 +91,8 @@ class NextUp(tk.Canvas):
             self.count_item = None
             return
         from datetime import datetime
-        from datetime import timezone as _tz
 
-        now = self._now or datetime.now(_tz.utc)
+        now = self._now or datetime.now(UTC)
         text, colour = self._countdown(now)
         big = num(20)
         self.count_item = self.create_text(m.x(right), px(47), text=text, anchor=m.a('e'), fill=colour, font=big)
@@ -190,7 +189,7 @@ class EventCanvas(tk.Frame):
         self.clock = clock
         self.period = period
         self.events: list[Event] = []
-        self.tz = timezone.utc
+        self.tz = UTC
         self.rows: list[Row] = []
         self._tops: list[int] = []
         self._sections: list[int] = []

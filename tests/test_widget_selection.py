@@ -1,6 +1,6 @@
 """Display-window tests: releases never disappear just because time passed."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import unittest
 
 import helpers  # noqa: F401  (makes the package importable)
@@ -8,7 +8,7 @@ import helpers  # noqa: F401  (makes the package importable)
 from econpulse.app import EconPulse
 from econpulse.core import parse_feed
 
-NOW = datetime(2026, 11, 11, 17, 30, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 11, 17, 30, tzinfo=UTC)
 
 
 class WidgetSelectionTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class WidgetSelectionTests(unittest.TestCase):
         obj = EconPulse.__new__(EconPulse)
         obj.cfg = {'currencies': [], 'impacts': ['High', 'Medium', 'Low'], 'holiday': True}
         obj.now = lambda: NOW
-        obj.tz = lambda: timezone.utc
+        obj.tz = lambda: UTC
         obj.tab = 'all'
         obj.widget_period = 'day'
 

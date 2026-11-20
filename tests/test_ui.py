@@ -7,6 +7,7 @@ or the clipboard.
 
 from argparse import Namespace
 import contextlib
+from datetime import UTC
 import io
 import os
 import sys
@@ -222,12 +223,12 @@ class WidgetTests(AppTestCase):
 
 
 def live_feed(*minutes_ahead):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from econpulse.core import parse_feed
     from econpulse.providers.base import FeedResult
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     rows = [
         {
             'title': f'Invented release {m}',

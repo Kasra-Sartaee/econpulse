@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import re
 
@@ -64,7 +64,7 @@ def fold(line):
 
 
 def save_ics(path, events, tz):
-    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    stamp = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
     lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -86,7 +86,7 @@ def save_ics(path, events, tz):
             d = e.display_day(tz)
             lines.extend([f'DTSTART;VALUE=DATE:{d:%Y%m%d}', f'DTEND;VALUE=DATE:{d + timedelta(days=1):%Y%m%d}'])
         else:
-            dt = e.instant.astimezone(timezone.utc)
+            dt = e.instant.astimezone(UTC)
             end = dt + timedelta(minutes=15)
             lines.extend([f'DTSTART:{dt:%Y%m%dT%H%M%SZ}', f'DTEND:{end:%Y%m%dT%H%M%SZ}'])
         lines.append('END:VEVENT')

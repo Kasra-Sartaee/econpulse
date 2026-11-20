@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Run EconPulse from source on Linux or macOS (experimental).
-# Needs Python 3.10+ with Tk (Debian/Ubuntu: sudo apt install python3-tk).
+# Needs Python 3.11+ with Tk (Debian/Ubuntu: sudo apt install python3-tk).
 set -e
 cd "$(dirname "$0")"
 PYTHON="${PYTHON:-python3}"

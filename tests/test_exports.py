@@ -1,7 +1,7 @@
 """CSV and ICS exports, including spreadsheet-formula neutralisation."""
 
 import csv
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -30,7 +30,7 @@ class ExportTests(unittest.TestCase):
     def test_csv_utf8_and_rows(self):
         with TemporaryDirectory() as td:
             p = Path(td) / 'events.csv'
-            save_csv(p, self.events, timezone.utc)
+            save_csv(p, self.events, UTC)
             data = p.read_text('utf-8-sig')
         self.assertIn('ALL DAY', data)
         self.assertIn('"CPI, headline"', data)
@@ -38,7 +38,7 @@ class ExportTests(unittest.TestCase):
     def test_ics_all_day_and_timed(self):
         with TemporaryDirectory() as td:
             p = Path(td) / 'events.ics'
-            save_ics(p, self.events, timezone.utc)
+            save_ics(p, self.events, UTC)
             data = p.read_text('utf-8')
         self.assertIn('DTSTART;VALUE=DATE:20261111', data)
         self.assertIn('DTSTART:20261111T133000Z', data)
@@ -48,7 +48,7 @@ class ExportTests(unittest.TestCase):
         events = parse_feed([{'title': 'Ж' * 80, 'country': 'USD', 'date': NOW.isoformat(), 'impact': 'High'}])
         with TemporaryDirectory() as td:
             path = Path(td) / 'x.ics'
-            save_ics(path, events, timezone.utc)
+            save_ics(path, events, UTC)
             raw = path.read_bytes()
         self.assertIn(b'DTSTAMP:', raw)
         for line in raw.split(b'\r\n'):
@@ -71,7 +71,7 @@ class FormulaInjectionTests(unittest.TestCase):
         events = parse_feed([{'title': '=cmd|" /C calc"!A0', 'country': 'USD', 'date': NOW.isoformat()}])
         with TemporaryDirectory() as td:
             p = Path(td) / 'x.csv'
-            save_csv(p, events, timezone.utc)
+            save_csv(p, events, UTC)
             with p.open(encoding='utf-8-sig', newline='') as stream:
                 rows = list(csv.reader(stream))
         self.assertEqual(rows[1][4], '\'=cmd|" /C calc"!A0')

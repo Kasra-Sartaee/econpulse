@@ -7,7 +7,7 @@ The window-building code lives in mixins (:mod:`.ui_calendar`, :mod:`.ui_widget`
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 import logging
 from pathlib import Path
 import queue
@@ -146,7 +146,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         return last - index if i18n.rtl() else index
 
     def now(self):
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def tz(self):
         # Resolved once per setting: tzlocal/zoneinfo lookups ran every second before.

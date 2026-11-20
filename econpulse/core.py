@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 import hashlib
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -37,7 +37,7 @@ def desired_timezone(name: str):
         if location == 'Asia/Tehran':
             return timezone(timedelta(hours=3, minutes=30))
         if location == 'UTC':
-            return timezone.utc
+            return UTC
         return datetime.now().astimezone().tzinfo
 
 
@@ -214,7 +214,7 @@ class AlertEngine:
         self.fired = set(fired or ())
 
     def check(self, events, now=None, *, currencies=None, enabled_stages=(30, 15, 5, 0)):
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         selected = set(currencies or ())
         found = []
         for e in events:

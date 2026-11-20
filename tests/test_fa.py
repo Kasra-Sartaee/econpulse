@@ -1,6 +1,6 @@
 """Persian (fa) mode: Jalali dates, digits, bidi marks and right-to-left mirroring."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 import unittest
 
 import helpers
@@ -8,7 +8,7 @@ import helpers
 from econpulse import i18n
 from econpulse.core import parse_feed
 
-NOW = datetime(2026, 11, 12, 12, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 12, 12, tzinfo=UTC)
 
 
 class Persian(unittest.TestCase):
@@ -124,7 +124,7 @@ class MirrorTests(Persian):
                 root.geometry('900x500')
                 root.deiconify()
                 root.update()
-                lst.update_data(events, timezone.utc)
+                lst.update_data(events, UTC)
                 root.update()
                 width = lst.view_width()
                 item = next(

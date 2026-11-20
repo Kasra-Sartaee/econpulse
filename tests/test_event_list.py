@@ -1,6 +1,6 @@
 """Event list rendering, text fitting, widget geometry and tray routing."""
 
-from datetime import timedelta, timezone
+from datetime import UTC, timedelta
 import queue
 import sys
 import types
@@ -63,13 +63,13 @@ class VirtualisedListTests(unittest.TestCase):
                 for i in range(n)
             ]
         )
-        events.sort(key=lambda e: (e.display_day(timezone.utc), e.instant))
+        events.sort(key=lambda e: (e.display_day(UTC), e.instant))
         lst = EventCanvas(self.root, theme.DARK, mode, opened.append, lambda: NOW, period='week')
         lst.pack(fill='both', expand=True)
         self.root.geometry('900x600')
         self.root.deiconify()
         self.root.update()
-        lst.update_data(events, timezone.utc)
+        lst.update_data(events, UTC)
         self.root.update()
         return lst, events, opened
 

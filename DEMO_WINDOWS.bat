@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 where py >nul 2>&1
 if errorlevel 1 (
- echo Python 3.10 or newer is needed: https://www.python.org/downloads/windows/
+ echo Python 3.11 or newer is needed: https://www.python.org/downloads/windows/
  pause
  exit /b 1
 )
