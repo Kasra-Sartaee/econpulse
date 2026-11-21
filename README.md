@@ -16,6 +16,7 @@
 <a href="https://github.com/Kasra-Sartaee/econpulse/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kasra-Sartaee/econpulse/ci.yml?branch=main&style=flat-square&label=CI&logo=github"></a>
 <a href="https://github.com/Kasra-Sartaee/econpulse/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://img.shields.io/github/actions/workflow/status/Kasra-Sartaee/econpulse/codeql.yml?branch=main&style=flat-square&label=CodeQL&logo=github"></a>
 <a href="https://scorecard.dev/viewer/?uri=github.com/Kasra-Sartaee/econpulse"><img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/Kasra-Sartaee/econpulse?style=flat-square&label=OpenSSF%20Scorecard"></a>
+<a href="https://www.bestpractices.dev/projects/16977"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/16977/badge"></a>
 </p>
 
 <p>
@@ -248,6 +249,7 @@ Want another source? See [docs/PROVIDERS.md](docs/PROVIDERS.md).
 - **Everything stays local** in your data folder: `%APPDATA%\EconPulse` on Windows, `~/Library/Application Support/EconPulse` on macOS, `~/.config/EconPulse` on Linux. That covers settings (including an optional API key), cached calendar data, alert history, trading notes (plain text) and a small log. **Settings → About → Open data folder** takes you there.
 - **Hardened input handling.** Everything is fetched over HTTPS only, with size-capped responses, length-limited fields and validated settings. Links open only if they're `https://`, and CSV exports are protected against spreadsheet formula injection.
 - **Continuously checked** by [CodeQL](https://codeql.github.com/), [Bandit](https://bandit.readthedocs.io/), [pip-audit](https://pypi.org/project/pip-audit/), [OpenSSF Scorecard](https://scorecard.dev/) and Dependabot. The code that reads downloaded data is [fuzzed](fuzz/fuzz_calendar_data.py) with [Atheris](https://github.com/google/atheris) on every change. All GitHub Actions and dependencies are pinned to hashes.
+- **Recognised good practice:** EconPulse holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/16977) passing badge.
 
 Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md).
 

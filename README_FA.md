@@ -9,6 +9,7 @@
 <p>
 <a href="https://github.com/Kasra-Sartaee/econpulse/releases/latest"><img alt="آخرین انتشار" src="https://img.shields.io/github/v/release/Kasra-Sartaee/econpulse?style=flat-square&label=release&color=f2555a"></a>
 <a href="https://github.com/Kasra-Sartaee/econpulse/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kasra-Sartaee/econpulse/ci.yml?branch=main&style=flat-square&label=CI&logo=github"></a>
+<a href="https://www.bestpractices.dev/projects/16977"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/16977/badge"></a>
 <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licence-MIT-111113?style=flat-square"></a>
 <img alt="Windows, macOS, Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-111113?style=flat-square">
 <a href="README.md"><img alt="English" src="https://img.shields.io/badge/README-English-111113?style=flat-square"></a>
