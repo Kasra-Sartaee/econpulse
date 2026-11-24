@@ -144,6 +144,99 @@ class NextUp(tk.Canvas):
             self.count_text, self.count_colour = text, colour
 
 
+class CompactBar(tk.Canvas):
+    """Single-line floating ticker bar for the next high-impact release."""
+
+    HEIGHT = 44
+
+    def __init__(self, parent, palette, open_event, bg=None):
+        self.p = palette
+        self.open_event = open_event
+        self.event = None
+        self.tz = UTC
+        self.count_item = None
+        self.count_text = ''
+        self.count_colour = ''
+        self._now = None
+        super().__init__(
+            parent,
+            height=px(self.HEIGHT),
+            bg=bg or parent_bg(parent, palette['bg']),
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        self.bind('<Configure>', lambda _e: self.redraw())
+        self.bind('<Double-Button-1>', lambda _e: self.event and self.open_event(self.event))
+
+    def set(self, event, tz, now):
+        if event is not None and event == self.event and tz == self.tz and self.count_item is not None:
+            self.tick(now)
+            return
+        self.event, self.tz, self._now = event, tz, now
+        self.redraw()
+
+    def _countdown(self, now):
+        e = self.event
+        left = (e.instant - now).total_seconds()
+        text = e.countdown(now) if left >= 0 else tr('Now')
+        colour = self.p['red'] if left < 15 * 60 else self.p['text']
+        return text, colour
+
+    def redraw(self):
+        self.delete('all')
+        p = self.p
+        w = max(px(220), self.winfo_width())
+        cy = px(self.HEIGHT) / 2
+        m = Mirror(w)
+        left, right = px(12), w - px(10)
+        e = self.event
+        if e is None:
+            dot(self, m.x(left + px(3)), cy, px(6), p['faded'])
+            self.create_text(
+                m.x(left + px(14)),
+                cy,
+                text=i18n.bidi(tr('No high-impact releases ahead')),
+                anchor=m.a('w'),
+                fill=p['soft'],
+                font=font(9, 'semibold'),
+            )
+            self.count_item = None
+            return
+        from datetime import datetime
+
+        now = self._now or datetime.now(UTC)
+        text, colour = self._countdown(now)
+        cf = num(12, 'bold')
+        self.count_item = self.create_text(m.x(right), cy, text=text, anchor=m.a('e'), fill=colour, font=cf)
+        self.count_text, self.count_colour = text, colour
+        reserve = cf.measure('0d 00:00:00' if 'd' in text else '00:00:00') + px(12)
+        dot(self, m.x(left + px(3)), cy, px(6), p['red'])
+        ccy_font = font(9, 'semibold')
+        ccy_x = left + px(13)
+        self.create_text(m.x(ccy_x), cy, text=e.currency, anchor=m.a('w'), fill=p['soft'], font=ccy_font)
+        title_x = ccy_x + fitter.measure(ccy_font, e.currency) + px(8)
+        title_font = font(10, 'semibold')
+        meta = f'  ·  {e.forecast}' if e.forecast else ''
+        avail = max(px(60), right - title_x - reserve)
+        self.create_text(
+            m.x(title_x),
+            cy,
+            text=fitter.fit(title_font, e.title + meta, avail),
+            anchor=m.a('w'),
+            fill=p['text'],
+            font=title_font,
+        )
+
+    def tick(self, now):
+        self._now = now
+        if self.event is None or self.count_item is None:
+            return
+        text, colour = self._countdown(now)
+        if (text, colour) != (self.count_text, self.count_colour):
+            self.itemconfigure(self.count_item, text=text, fill=colour)
+            self.count_text, self.count_colour = text, colour
+
+
 @dataclass(slots=True)
 class Row:
     kind: str  # 'section' | 'event' | 'now'

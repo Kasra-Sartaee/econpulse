@@ -12,7 +12,7 @@ from .controls import (
     StatusLine,
     dot,
 )
-from .event_list import EventCanvas, NextUp
+from .event_list import CompactBar, EventCanvas, NextUp
 from .storage import save_settings
 from .system import native_round
 from .theme import glyph, px, unpx
@@ -21,6 +21,10 @@ log = logging.getLogger('econpulse')
 
 
 class WidgetWindowMixin:
+    COMPACT_W = 440
+    COMPACT_H = 46
+    SNAP_PX = 14
+
     def set_widget_period(self, period):
         if period not in ('day', 'week') or self.widget_period == period:
             return
@@ -32,6 +36,20 @@ class WidgetWindowMixin:
         self.render_widget()
         self.root.after(100, self.focus_widget_when_ready)
 
+    def toggle_compact_widget(self):
+        self.cfg['widget_compact'] = not bool(self.cfg.get('widget_compact', False))
+        save_settings(self.cfg)
+        if self.widget and self.widget.winfo_exists():
+            self._drop_widget()
+            self.show_widget()
+
+    def toggle_pin_widget(self):
+        value = not bool(self.cfg.get('topmost', True))
+        self.cfg['topmost'] = value
+        if self.widget and self.widget.winfo_exists():
+            self.widget.attributes('-topmost', value)
+        save_settings(self.cfg)
+
     def focus_widget_when_ready(self):
         if self.widget and self.widget.winfo_exists() and self.widget_list:
             self.widget_list.focus_upcoming()
@@ -42,9 +60,14 @@ class WidgetWindowMixin:
             control.set(self.widget_period)
 
     def render_widget(self):
-        if not (self.widget_list and self.widget and self.widget.winfo_exists()):
+        if not (self.widget and self.widget.winfo_exists()):
             return
         tz = self.tz()
+        if self.compact_bar is not None and self.compact_bar.winfo_exists():
+            self.compact_bar.set(self.next_high(), tz, self.now())
+            return
+        if not self.widget_list:
+            return
         self.widget_list.update_data(
             self.visible('all', True), tz, focus=self.widget_refocus, starred=self.starred_keys()
         )
@@ -109,13 +132,37 @@ class WidgetWindowMixin:
         except (tk.TclError, TypeError, ValueError):
             pass
         width, height, x, y = self.widget_geometry()
+        compact = bool(self.cfg.get('widget_compact', False))
+        if compact:
+            width, height = px(self.COMPACT_W), px(self.COMPACT_H)
         w.geometry(f'{width}x{height}+{x}+{y}')
         self.apply_icon(w)
-        self.bind_scroll_keys(w, 'widget_list')
-        native = native_round(w, p['line_strong'])
+        w.bind('<Control-m>', lambda _e: self.toggle_compact_widget())
+        native = native_round(w, p['line_strong'], small=compact)
         w.configure(bg=p['line_strong'])
         shell = tk.Frame(w, bg=p['bg'])
         shell.pack(fill='both', expand=True, padx=0 if native else 1, pady=0 if native else 1)
+
+        if compact:
+            self.compact_bar = CompactBar(shell, p, self.event_detail, bg=p['bg'])
+            self.compact_bar.pack(side='left', fill='both', expand=True)
+            controls = tk.Frame(shell, bg=p['bg'])
+            controls.pack(side='right', padx=(0, px(6)))
+            for icon, func, tip in [
+                ('expand', self.toggle_compact_widget, 'Expand widget'),
+                ('calendar', self.show_full, 'Open calendar'),
+                ('close', self.hide_widget, 'Close'),
+            ]:
+                self.icon_btn(controls, icon, func, tip, 28).pack(side='left', padx=(px(2), 0))
+            for drag_target in (shell, self.compact_bar):
+                drag_target.bind('<ButtonPress-1>', self.drag_start)
+                drag_target.bind('<B1-Motion>', self.drag_move)
+                drag_target.bind('<ButtonRelease-1>', self.drag_end)
+                drag_target.configure(cursor='fleur')
+            self.render_widget()
+            return
+
+        self.bind_scroll_keys(w, 'widget_list')
 
         # ---- title bar (drag handle)
         top = tk.Frame(shell, bg=p['bg'], height=px(48))
@@ -126,6 +173,8 @@ class WidgetWindowMixin:
         controls = tk.Frame(top, bg=p['bg'])
         controls.pack(side='right', padx=px(8))
         for icon, func, tip in [
+            ('compact', self.toggle_compact_widget, 'Compact ticker bar'),
+            ('pin', self.toggle_pin_widget, 'Always on top'),
             ('calendar', self.show_full, 'Open calendar'),
             ('settings', self.settings, 'Settings'),
             ('close', self.hide_widget, 'Close'),
@@ -220,9 +269,31 @@ class WidgetWindowMixin:
         if self.widget_offset and self.widget:
             self.widget.geometry(f'+{e.x_root - self.widget_offset[0]}+{e.y_root - self.widget_offset[1]}')
 
+    def _snap_position(self, x, y, w, h):
+        """Magnetically snap to the active monitor's workarea edges."""
+        snap = px(self.SNAP_PX)
+        cx, cy = x + w // 2, y + h // 2
+        for l, t, r, b in self.all_workareas():
+            if l <= cx < r and t <= cy < b:
+                if abs(x - l) <= snap:
+                    x = l
+                elif abs((x + w) - r) <= snap:
+                    x = r - w
+                if abs(y - t) <= snap:
+                    y = t
+                elif abs((y + h) - b) <= snap:
+                    y = b - h
+                break
+        return x, y
+
     def drag_end(self, _e):
         if self.widget and self.widget_offset:
-            x, y = unpx(self.widget.winfo_x()), unpx(self.widget.winfo_y())
+            wx, wy = self.widget.winfo_x(), self.widget.winfo_y()
+            ww, wh = self.widget.winfo_width(), self.widget.winfo_height()
+            sx, sy = self._snap_position(wx, wy, ww, wh)
+            if (sx, sy) != (wx, wy):
+                self.widget.geometry(f'+{sx}+{sy}')
+            x, y = unpx(sx), unpx(sy)
             if (x, y) != (self.cfg.get('widget_x'), self.cfg.get('widget_y')):
                 self.cfg['widget_x'], self.cfg['widget_y'] = x, y
                 save_settings(self.cfg)
@@ -267,6 +338,9 @@ class WidgetWindowMixin:
         self.widget = None
         self.widget_list = None
         self.widget_hero = None
+        self.compact_bar = None
+        self.widget_status = None
+        self.widget_timezone = None
 
     def hide_widget(self):
         self._drop_widget()

@@ -20,6 +20,7 @@ import helpers
 
 from econpulse import __version__, i18n, theme
 from econpulse.controls import FlatButton, Segmented
+from econpulse.core import series_key
 
 
 def descendants(widget):
@@ -121,6 +122,26 @@ class DialogTests(AppTestCase):
         self.settle()
         self.assertEqual(state.load_event_notes().get(state.event_key(event)), 'Wait 2 minutes after print')
 
+    def test_enter_on_a_focused_button_runs_only_that_button(self):
+        event = next(e for e in self.app.events if not e.is_holiday)
+        self.app.event_detail(event)
+        self.settle()
+        window = self.app.detail_window
+        star = button(window, 'flip_star')
+        star.focus_force()
+        self.settle()
+        star.event_generate('<Return>')
+        self.settle()
+        self.assertTrue(window.winfo_exists(), 'Enter on Star must not also close the dialog')
+        self.assertIn(series_key(event), self.app.starred_keys())  # ...but it did star the release
+        done = button(window, 'close_detail')
+        done.focus_force()
+        self.settle()
+        done.event_generate('<Return>')  # runs close_detail once; a second run must be harmless
+        self.settle()
+        self.assertFalse(window.winfo_exists())
+        window.close_detail()
+
     def test_opening_another_release_saves_the_open_note(self):
         from econpulse import state
 
@@ -132,6 +153,29 @@ class DialogTests(AppTestCase):
         self.app.event_detail(second)  # e.g. a toast was clicked
         self.settle()
         self.assertEqual(state.load_event_notes().get(state.event_key(first)), 'half-typed idea')
+
+    def test_letter_shortcuts_are_ignored_while_typing(self):
+        action = mock.Mock()
+        handler = self.app._unless_typing(action)
+        self.assertIsNone(handler(Namespace(widget=tk.Entry(self.root))))
+        action.assert_not_called()
+        self.assertEqual(handler(Namespace(widget=self.root)), 'break')
+        action.assert_called_once()
+
+    def test_status_file_stays_fresh_while_hidden_in_the_tray(self):
+        import json
+
+        from econpulse.storage import data_dir
+
+        self.app.cfg['write_status_file'] = True
+        self.app.show_widget()
+        self.app.hide_widget()
+        self.root.withdraw()
+        self.settle()
+        self.app.last_render_min = None
+        self.app._tick()
+        status = json.loads((data_dir() / 'next.json').read_text(encoding='utf-8'))
+        self.assertIn('next_high_impact', status)
 
     def test_notes_are_saved_to_the_data_folder(self):
         from econpulse.storage import data_dir
@@ -250,6 +294,18 @@ class WidgetTests(AppTestCase):
         self.app.show_widget()
         self.settle()
         self.assertTrue(self.app.widget.winfo_exists())
+
+    def test_compact_ticker_bar_mode_toggles_and_ticks(self):
+        self.app.toggle_compact_widget()
+        self.settle()
+        self.assertTrue(self.app.cfg['widget_compact'])
+        self.assertIsNotNone(self.app.compact_bar)
+        self.app._tick()
+        self.app.toggle_compact_widget()
+        self.settle()
+        self.assertFalse(self.app.cfg['widget_compact'])
+        self.assertIsNone(self.app.compact_bar)
+        self.assertIsNotNone(self.app.widget_list)
 
 
 def live_feed(*minutes_ahead):

@@ -77,6 +77,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.main_list = None
         self.widget_list = None
         self.widget_hero = None
+        self.compact_bar = None
         self.setting_window = None
         self.detail_window = None
         self.last_render_min = None
@@ -106,6 +107,13 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         root.bind('<Escape>', lambda _e: self.show_widget())
         root.bind('<F5>', lambda _e: self.refresh(False))
         root.bind('<Control-f>', lambda _e: self.focus_search())
+        root.bind('<Control-comma>', lambda _e: self.settings())
+        # Letter shortcuts stay out of the way while the user types in the search box.
+        root.bind('<Control-e>', self._unless_typing(self.export))
+        root.bind('<Control-n>', self._unless_typing(self.notes))
+        root.bind('<Control-w>', self._unless_typing(self.show_widget))
+        for idx, tab_key in enumerate(('all', 'today', 'upcoming', 'released', 'holidays'), 1):
+            root.bind(f'<Control-Key-{idx}>', lambda _e, k=tab_key: self.set_tab(k))
         self.bind_scroll_keys(root, 'main_list')
         self.apply_icon(root)
         root.option_add('*tearOff', False)
@@ -254,6 +262,16 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         for key in self.SCROLL_KEYS:
             window.bind(f'<{key}>', lambda e, k=key: scroll(e, k))
 
+    @staticmethod
+    def _unless_typing(action):
+        def handler(event):
+            if isinstance(event.widget, (tk.Entry, tk.Text)):
+                return None
+            action()
+            return 'break'
+
+        return handler
+
     def watched_currencies(self):
         """Currencies the user follows: the selection, else the majors (unless
         "Show other currencies" is on, in which case None means all)."""
@@ -335,6 +353,24 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.render_widget()
         self.render_stats()
         self.render_status()
+        self._write_status_file()
+
+    def _write_status_file(self):
+        if not self.cfg.get('write_status_file'):
+            return
+        try:
+            snap = state.status_snapshot(
+                self.events,
+                self.next_high(),
+                state=self.state,
+                source=self.source,
+                at=self.at,
+                now=self.now(),
+                tz=self.tz(),
+            )
+            state.write_status_snapshot(snap)
+        except OSError:
+            log.warning('could not write next.json status file', exc_info=True)
 
     def _status_parts(self):
         """(state label, colour, detail) describing data freshness."""
@@ -384,10 +420,16 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.render_attribution()
         self.rail_source.set(colour, state)
         self.rail_sync.config(text=detail)
-        if self.widget and self.widget.winfo_exists() and hasattr(self, 'widget_status'):
+        if (
+            self.widget
+            and self.widget.winfo_exists()
+            and getattr(self, 'widget_status', None) is not None
+            and self.widget_status.winfo_exists()
+        ):
             count = len(self.widget_list.events) if self.widget_list else 0
             self.widget_status.set(colour, state, i18n.count(count, 'release'))
-            self.widget_timezone.config(text=self.tr(self.cfg.get('timezone', 'System local').split(' (')[0]))
+            if getattr(self, 'widget_timezone', None) is not None and self.widget_timezone.winfo_exists():
+                self.widget_timezone.config(text=self.tr(self.cfg.get('timezone', 'System local').split(' (')[0]))
 
     def tick(self):
         try:
@@ -409,6 +451,8 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             self.widget_list.tick()
         if self.widget_hero is not None and self.widget and self.widget.winfo_exists():
             self.widget_hero.tick(now)
+        if self.compact_bar is not None and self.compact_bar.winfo_exists():
+            self.compact_bar.tick(now)
         if getattr(self, 'stat_widgets', None):
             nxt = self._next_high
             if nxt and nxt.instant <= now:
@@ -427,6 +471,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 self.render()
             else:
                 self._dirty = True
+                self._write_status_file()  # render() is skipped in the tray; next.json must not go stale
         elif self._dirty and (full_visible or widget_visible):
             self._dirty = False
             self.render()
@@ -725,6 +770,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 pystray.MenuItem(label('Open full calendar'), menu_action(self.show_full)),
                 pystray.MenuItem(label('Widget: Today'), menu_action(lambda: self.show_tray_widget_period('day'))),
                 pystray.MenuItem(label('Widget: Week'), menu_action(lambda: self.show_tray_widget_period('week'))),
+                pystray.MenuItem(label('Toggle compact bar'), menu_action(self.toggle_compact_widget)),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(label('Toggle Always on Top'), menu_action(self.toggle_topmost_from_tray)),
                 pystray.MenuItem(

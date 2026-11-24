@@ -263,6 +263,9 @@ ICONS = {
     'globe': ('\ue774', '◍'),
     'target': ('\ue81d', '◎'),
     'link': ('\ue8a7', '↗'),
+    'pin': ('\ue718', '◈'),
+    'compact': ('\ue73f', '—'),
+    'expand': ('\ue740', '▢'),
     'star': ('\ue734', '☆'),
     'star_fill': ('\ue735', '★'),
 }

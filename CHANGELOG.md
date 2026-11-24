@@ -5,10 +5,14 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 ## [Unreleased]
 
 ### Added
+- **Compact ticker-bar widget mode**: toggleable single-line floating bar (`Ctrl+M`, widget header button, or tray menu) showing the next high-impact release, forecast, and live countdown, plus magnetic edge-snapping and a quick Always-on-Top pin toggle.
 - **Starred watchlist & per-event release notes**: star any indicator in Release Details to highlight it in lists and receive alerts even for medium/low-impact releases, and attach private notes (`event-notes.json`) that persist across recurring releases.
 - **"Result published" alerts**: one notification when Actual values arrive for watched releases (skipped for releases more than 30 minutes old, e.g. after a laptop wake). Clicking a notification opens that release's details.
 - **Fast check after high-impact releases** (opt-in, off by default): one refresh 45 s and one 3 min after each watched release *time* still missing its Actual, however many releases share that minute. Never while the source is failing or backing off, and never on a schedule-only source.
 - **Revision tracking**: shows `Previous revised from …` in Release Details when a provider supplies `revisedPrevious`.
+- **Expanded trading time zones** (18 global financial centres) and **Preferences controls** for widget opacity, refresh interval, compact bar, Actual alerts, burst polling, and an opt-in live `next.json` status file for OBS / Stream Deck / scripts.
+- **Keyboard accessibility & shortcuts**: `Tab` focus rings and `Space`/`Enter` activation on custom canvas controls, plus `Ctrl+1..5` (views), `Ctrl+,` (Preferences), `Ctrl+E` (Export), `Ctrl+N` (Notes), `Ctrl+W` (Widget), and `Ctrl+M` (Compact bar).
+- **Windows Focus Assist / Fullscreen awareness**: alert sounds respect Windows Do-Not-Disturb / presentation / fullscreen state (`SHQueryUserNotificationState`).
 
 ### Changed
 - **Faster, lighter networking & idle loop**: gzip responses with a hard zip-bomb cap, conditional `ETag` / `If-Modified-Since` (`304 Not Modified`) support, concurrent weekly fetches for biquote, adaptive idle polling, skipping offscreen per-minute renders when hidden in the tray, binary-search sticky headers, and bounded LRU text/image caches.

@@ -258,6 +258,12 @@ Found a vulnerability? Please report it privately; see [SECURITY.md](SECURITY.md
 | Key | Action |
 |---|---|
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Search (full calendar) |
+| <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>5</kbd> | Switch calendar views |
+| <kbd>Ctrl</kbd>+<kbd>W</kbd> | Switch to the floating widget |
+| <kbd>Ctrl</kbd>+<kbd>M</kbd> | Toggle compact ticker-bar widget mode |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Open Preferences |
+| <kbd>Ctrl</kbd>+<kbd>E</kbd> | Export current view |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> | Open trading notes |
 | <kbd>F5</kbd> | Refresh |
 | <kbd>Esc</kbd> | Clear the search, or switch from the calendar to the widget |
 | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Page Up</kbd> <kbd>Page Down</kbd> <kbd>Home</kbd> <kbd>End</kbd> | Scroll the list (click the list first) |

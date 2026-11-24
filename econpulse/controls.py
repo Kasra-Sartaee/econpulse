@@ -282,6 +282,7 @@ class FlatButton(tk.Canvas):
         self.impact = impact
         self.is_hover = False
         self.is_down = False
+        self.is_focused = False
         self.font_size = font_size
         self.fixed_width = width
         self.fixed_height = height
@@ -294,15 +295,30 @@ class FlatButton(tk.Canvas):
             highlightthickness=0,
             relief='flat',
             cursor='hand2',
+            takefocus=1,
         )
         self.bind('<Configure>', lambda _e: self.redraw())
         self.bind('<Enter>', self.on_enter)
         self.bind('<Leave>', self.on_leave)
         self.bind('<ButtonPress-1>', self._press)
         self.bind('<ButtonRelease-1>', self._release)
+        self.bind('<FocusIn>', lambda _e: self._set_focus(True))
+        self.bind('<FocusOut>', lambda _e: self._set_focus(False))
+        # 'break' stops a dialog's own <Return> binding from also firing.
+        self.bind('<Return>', lambda _e: self._activate())
+        self.bind('<space>', lambda _e: self._activate())
         if tooltip:
             Tooltip(self, tooltip, palette)
         self.redraw()
+
+    def _set_focus(self, state):
+        if state != self.is_focused:
+            self.is_focused = state
+            self.redraw()
+
+    def _activate(self):
+        self.cmd()
+        return 'break'
 
     def _font(self):
         return font(self.font_size, 'semibold')
@@ -371,6 +387,8 @@ class FlatButton(tk.Canvas):
         w = self.winfo_width() if self.winfo_width() > 1 else int(self.cget('width'))
         h = self.winfo_height() if self.winfo_height() > 1 else int(self.cget('height'))
         fill, fg, outline = self._style()
+        if self.is_focused and not outline:
+            outline = self.p['faded']
         pill = self.kind in ('selected', 'chip')
         radius = h // 2 if pill else px(7)
         inset = 1 if self.is_down else 0
@@ -415,6 +433,7 @@ class Segmented(tk.Canvas):
         self.p = palette
         self.font_size = font_size
         self.hover = None
+        self.is_focused = False
         f = font(font_size, 'semibold')
         self.seg_w = max([px(min_width)] + [fitter.measure(f, label) + px(26) for _v, label in self.options])
         self.pad = px(3)
@@ -426,12 +445,30 @@ class Segmented(tk.Canvas):
             highlightthickness=0,
             borderwidth=0,
             cursor='hand2',
+            takefocus=1,
         )
         self.bind('<Configure>', lambda _e: self.redraw())
         self.bind('<Motion>', self._motion)
         self.bind('<Leave>', lambda _e: self._set_hover(None))
         self.bind('<ButtonRelease-1>', self._click)
+        self.bind('<FocusIn>', lambda _e: self._set_focus(True))
+        self.bind('<FocusOut>', lambda _e: self._set_focus(False))
+        self.bind('<Left>', lambda _e: self._step(-1))
+        self.bind('<Right>', lambda _e: self._step(1))
         self.redraw()
+
+    def _set_focus(self, state):
+        if state != self.is_focused:
+            self.is_focused = state
+            self.redraw()
+
+    def _step(self, delta):
+        values = [v for v, _label in self.options]
+        if self.value in values:
+            nxt = values[(values.index(self.value) + delta) % len(values)]
+            if nxt != self.value:
+                self.set(nxt)
+                self.command(nxt)
 
     def _index_at(self, x):
         i = int((x - self.pad) // max(1, self.seg_w))
@@ -463,7 +500,7 @@ class Segmented(tk.Canvas):
         p = self.p
         w = int(self.cget('width'))
         h = self.winfo_height() if self.winfo_height() > 1 else int(self.cget('height'))
-        rounded(self, 0, 0, w, h, px(8), p['seg'])
+        rounded(self, 0, 0, w, h, px(8), p['seg'], p['faded'] if self.is_focused else '')
         for i, (value, label) in enumerate(self.options):
             x0 = self.pad + i * self.seg_w
             selected = value == self.value
@@ -494,6 +531,7 @@ class Toggle(tk.Canvas):
         self.p = palette
         self.pos = 1.0 if variable.get() else 0.0
         self._anim = None
+        self.is_focused = False
         super().__init__(
             parent,
             width=px(self.W),
@@ -502,11 +540,21 @@ class Toggle(tk.Canvas):
             highlightthickness=0,
             borderwidth=0,
             cursor='hand2',
+            takefocus=1,
         )
         self.bind('<ButtonRelease-1>', lambda _e: self.toggle())
+        self.bind('<Return>', lambda _e: (self.toggle(), 'break')[1])
+        self.bind('<space>', lambda _e: (self.toggle(), 'break')[1])
+        self.bind('<FocusIn>', lambda _e: self._set_focus(True))
+        self.bind('<FocusOut>', lambda _e: self._set_focus(False))
         self._trace = self.var.trace_add('write', lambda *_: self._animate())
         self.bind('<Destroy>', self._untrace)
         self.redraw()
+
+    def _set_focus(self, state):
+        if state != self.is_focused:
+            self.is_focused = state
+            self.redraw()
 
     def _untrace(self, _e):
         try:
@@ -535,7 +583,7 @@ class Toggle(tk.Canvas):
         p = self.p
         w, h = px(self.W), px(self.H)
         on = bool(self.var.get())
-        rounded(self, 0, 0, w, h, h // 2, p['primary'] if on else p['track'])
+        rounded(self, 0, 0, w, h, h // 2, p['primary'] if on else p['track'], p['faded'] if self.is_focused else '')
         knob = h - px(6)
         cx = Mirror(w).x(h / 2 + (w - h) * self.pos)
         dot(self, cx, h / 2, knob, p['primary_fg'] if on else p['white'])
@@ -553,6 +601,7 @@ class FlatSelect(tk.Canvas):
         self.p = palette
         self.popup = None
         self.is_hover = False
+        self.is_focused = False
         super().__init__(
             parent,
             width=px(width),
@@ -561,14 +610,24 @@ class FlatSelect(tk.Canvas):
             borderwidth=0,
             highlightthickness=0,
             cursor='hand2',
+            takefocus=1,
         )
         self.bind('<Button-1>', lambda _e: self.open_popup())
+        self.bind('<Return>', lambda _e: (self.open_popup(), 'break')[1])
+        self.bind('<space>', lambda _e: (self.open_popup(), 'break')[1])
+        self.bind('<FocusIn>', lambda _e: self._focus(True))
+        self.bind('<FocusOut>', lambda _e: self._focus(False))
         self.bind('<Configure>', lambda _e: self.redraw())
         self.bind('<Enter>', lambda _e: self._hover(True))
         self.bind('<Leave>', lambda _e: self._hover(False))
         self._trace = self.value.trace_add('write', lambda *_: self.redraw())
         self.bind('<Destroy>', self._cleanup)
         self.redraw()
+
+    def _focus(self, state):
+        if state != self.is_focused:
+            self.is_focused = state
+            self.redraw()
 
     def _label(self, item):
         return self.labels.get(item, item)
@@ -589,7 +648,7 @@ class FlatSelect(tk.Canvas):
         p = self.p
         w = self.winfo_width() if self.winfo_width() > 1 else int(self['width'])
         h = self.winfo_height() if self.winfo_height() > 1 else int(self['height'])
-        border = p['faded'] if self.popup else (p['faded'] if self.is_hover else p['line_strong'])
+        border = p['faded'] if (self.popup or self.is_hover or self.is_focused) else p['line_strong']
         rounded(self, 0, 0, w, h, px(7), p['input'], border)
         f = font(10)
         m = Mirror(w)
@@ -811,6 +870,7 @@ class NavItem(tk.Canvas):
         self.p, self.icon, self.text, self.command = palette, icon, text, command
         self.active = False
         self.is_hover = False
+        self.is_focused = False
         super().__init__(
             parent,
             height=px(height),
@@ -818,11 +878,21 @@ class NavItem(tk.Canvas):
             highlightthickness=0,
             borderwidth=0,
             cursor='hand2',
+            takefocus=1,
         )
         self.bind('<Configure>', lambda _e: self.redraw())
         self.bind('<Enter>', lambda _e: self._hover(True))
         self.bind('<Leave>', lambda _e: self._hover(False))
+        self.bind('<FocusIn>', lambda _e: self._focus(True))
+        self.bind('<FocusOut>', lambda _e: self._focus(False))
+        self.bind('<Return>', lambda _e: (self.command(), 'break')[1])
+        self.bind('<space>', lambda _e: (self.command(), 'break')[1])
         self.bind('<ButtonRelease-1>', lambda _e: self.command())
+
+    def _focus(self, state):
+        if state != self.is_focused:
+            self.is_focused = state
+            self.redraw()
 
     def _hover(self, state):
         self.is_hover = state
@@ -838,8 +908,17 @@ class NavItem(tk.Canvas):
         p = self.p
         w = max(1, self.winfo_width())
         h = self.winfo_height() if self.winfo_height() > 1 else int(self.cget('height'))
-        if self.active or self.is_hover:
-            rounded(self, 0, 0, w, h, px(7), p['raised'] if self.active else p['hover'])
+        if self.active or self.is_hover or self.is_focused:
+            rounded(
+                self,
+                0,
+                0,
+                w,
+                h,
+                px(7),
+                p['raised'] if self.active else (p['hover'] if self.is_hover else ''),
+                p['faded'] if self.is_focused else '',
+            )
         colour = p['text'] if self.active or self.is_hover else p['soft']
         text, f = glyph(self.icon, 11)
         m = Mirror(w)

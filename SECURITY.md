@@ -27,6 +27,7 @@ All requests use HTTPS and identify the app as `EconPulse/<version> (+project UR
 - `cache-v4.json`, `ff-export-v4.json`: the last calendar data;
 - `fired.json`: which alerts were already shown;
 - `notes.txt`, `event-notes.json`: your global and per-indicator trading notes (local only, written atomically);
+- `next.json`: optional live status snapshot (only written if enabled in Settings);
 - `econpulse.log`: errors and warnings (at most about 0.5 MB). It never contains your API key.
 
 There is no telemetry.

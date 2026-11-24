@@ -307,6 +307,8 @@ def repair_startup() -> bool:
 # Small conveniences
 # --------------------------------------------------------------------------
 def play_alert_sound(widget) -> None:
+    if is_dnd_active():
+        return
     if sys.platform == 'win32':
         try:
             import winsound
@@ -319,6 +321,22 @@ def play_alert_sound(widget) -> None:
         widget.bell()
     except Exception:
         pass
+
+
+def is_dnd_active() -> bool:
+    """True when Windows reports Fullscreen / Presentation / Focus Assist Quiet Time."""
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+
+        state = ctypes.c_int(0)
+        if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)) == 0:
+            # 2=BUSY, 3=RUNNING_D3D_FULL_SCREEN, 4=PRESENTATION_MODE, 6=QUIET_TIME
+            return state.value in (2, 3, 4, 6)
+    except Exception:
+        pass
+    return False
 
 
 def is_safe_url(url) -> bool:

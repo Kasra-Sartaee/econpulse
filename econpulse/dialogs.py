@@ -449,6 +449,19 @@ class DialogsMixin:
 
         floating = group(self.tr('Widget'))
         toggle(floating, self.tr('Always on top of other windows'), 'topmost')
+        toggle(floating, self.tr('Compact ticker bar'), 'widget_compact')
+        opacity_val = str(min((60, 75, 90, 100), key=lambda o: abs(o - int(self.cfg.get('widget_opacity', 100)))))
+        opacity_var = tk.StringVar(value=opacity_val)
+        Segmented(
+            row(floating, self.tr('Widget opacity')),
+            [('60', '60%'), ('75', '75%'), ('90', '90%'), ('100', '100%')],
+            opacity_var.get(),
+            opacity_var.set,
+            p,
+            height=30,
+            min_width=46,
+        ).pack(side='right')
+        values['widget_opacity'] = opacity_var
         if system.startup_supported():
             toggle(floating, self.tr('Start automatically at login'), 'startup', system.get_startup())
         toggle(floating, self.tr('Show bank and market holidays'), 'holiday')
@@ -530,6 +543,19 @@ class DialogsMixin:
             clickable=lambda: system.safe_open('https://www.financecalendar.com/api/'),
         )
         self.label(get_key, '↗', 10, p['faded']).pack(side='right')
+        refresh_val = str(min((15, 30, 60), key=lambda m: abs(m - int(self.cfg.get('refresh_minutes', 15)))))
+        refresh_var = tk.StringVar(value=refresh_val)
+        Segmented(
+            row(sources, self.tr('Refresh every')),
+            [('15', i18n.minutes(15)), ('30', i18n.minutes(30)), ('60', i18n.minutes(60))],
+            refresh_var.get(),
+            refresh_var.set,
+            p,
+            height=30,
+            min_width=56,
+        ).pack(side='right')
+        values['refresh_minutes'] = refresh_var
+        toggle(sources, self.tr('Write live status file (next.json)'), 'write_status_file')
 
         updates_group = group(self.tr('Updates'))
         toggle(updates_group, self.tr('Tell me when a new version is out (checks GitHub once a day)'), 'check_updates')
@@ -573,7 +599,10 @@ class DialogsMixin:
         def save():
             before = (self.cfg.get('provider'), self.cfg.get('financecalendar_key'), self.cfg.get('check_updates'))
             for name, var in values.items():
-                self.cfg[name] = var.get()
+                val = var.get()
+                if name in ('widget_opacity', 'refresh_minutes'):
+                    val = int(val)
+                self.cfg[name] = val
             self.cfg['financecalendar_key'] = ''.join(key_var.get().split())[:128]
             extra_cur = sorted(c for c in selected if c not in CURRENCIES)
             self.cfg['currencies'] = [c for c in CURRENCIES if c in selected] + extra_cur

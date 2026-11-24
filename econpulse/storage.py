@@ -113,6 +113,7 @@ DEFAULTS = {
     'other_currencies': False,
     'refresh_minutes': 15,
     'widget_opacity': 100,
+    'widget_compact': False,
     'widget_x': None,
     'widget_y': None,
     'widget_w': 452,
@@ -125,6 +126,7 @@ DEFAULTS = {
     'latest_version': '',
     'alert_actual': True,
     'burst_poll': False,
+    'write_status_file': False,
     'starred': [],
 }
 
@@ -176,6 +178,7 @@ def _validators():
         'other_currencies': lambda v: isinstance(v, bool),
         'refresh_minutes': _int_range(15, 240),
         'widget_opacity': _int_range(40, 100),
+        'widget_compact': lambda v: isinstance(v, bool),
         'widget_x': _optional_int,
         'widget_y': _optional_int,
         'widget_w': _int_range(200, 4000),
@@ -188,6 +191,7 @@ def _validators():
         'latest_version': _short_text,
         'alert_actual': lambda v: isinstance(v, bool),
         'burst_poll': lambda v: isinstance(v, bool),
+        'write_status_file': lambda v: isinstance(v, bool),
         'starred': lambda v: (
             isinstance(v, list) and len(v) <= 100 and all(isinstance(item, str) and 0 < len(item) <= 120 for item in v)
         ),

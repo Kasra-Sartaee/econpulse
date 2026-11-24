@@ -12,13 +12,23 @@ CURRENCIES = ('USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'NZD', 'CHF', 'CNY')
 IMPACTS = ('High', 'Medium', 'Low', 'Holiday')
 TIMEZONES = {
     'System local': None,
-    'Tehran (UTC+03:30)': 'Asia/Tehran',
-    'Berlin (DST-aware)': 'Europe/Berlin',
-    'New York (DST-aware)': 'America/New_York',
-    'London (DST-aware)': 'Europe/London',
     'UTC': 'UTC',
+    'New York (DST-aware)': 'America/New_York',
+    'Chicago (DST-aware)': 'America/Chicago',
+    'Toronto (DST-aware)': 'America/Toronto',
+    'Los Angeles (DST-aware)': 'America/Los_Angeles',
+    'London (DST-aware)': 'Europe/London',
+    'Berlin (DST-aware)': 'Europe/Berlin',
+    'Zurich (DST-aware)': 'Europe/Zurich',
+    'Istanbul (UTC+03:00)': 'Europe/Istanbul',
+    'Tehran (UTC+03:30)': 'Asia/Tehran',
     'Dubai (UTC+04:00)': 'Asia/Dubai',
+    'Mumbai (UTC+05:30)': 'Asia/Kolkata',
+    'Singapore (UTC+08:00)': 'Asia/Singapore',
+    'Hong Kong (UTC+08:00)': 'Asia/Hong_Kong',
+    'Shanghai (UTC+08:00)': 'Asia/Shanghai',
     'Tokyo (UTC+09:00)': 'Asia/Tokyo',
+    'Sydney (DST-aware)': 'Australia/Sydney',
 }
 
 
