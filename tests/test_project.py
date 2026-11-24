@@ -77,8 +77,8 @@ class ProjectTests(unittest.TestCase):
                 self.assertIn('--hash=sha256:', block, f'{lock}: {block.splitlines()[0]} has no hash')
 
     def test_automated_installs_are_hash_checked(self):
-        # CI and run.sh install only from hash-locked files (OpenSSF Scorecard: Pinned-Dependencies).
-        scripts = [ROOT / 'run.sh', *sorted((ROOT / '.github' / 'workflows').glob('*.yml'))]
+        # CI, run.sh and RUN_WINDOWS.bat install only from hash-locked files (OpenSSF Scorecard: Pinned-Dependencies).
+        scripts = [ROOT / 'run.sh', ROOT / 'RUN_WINDOWS.bat', *sorted((ROOT / '.github' / 'workflows').glob('*.yml'))]
         for script in scripts:
             for line in script.read_text(encoding='utf-8').splitlines():
                 if re.search(r'\bpip install\b', line):

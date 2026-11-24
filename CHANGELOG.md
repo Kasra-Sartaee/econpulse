@@ -8,6 +8,7 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 - **Hardened HTTP redirects**: refuse non-HTTPS or non-public/localhost redirect targets, enforce TLS 1.2+, and strip `X-API-Key` / `Authorization` / `Cookie` headers on cross-origin redirects.
 - **Encrypted API key on Windows (DPAPI)** and private `0700`/`0600` file permissions on POSIX, plus atomic writes (with Windows lock retries) for settings, caches, and trading notes.
 - **Sanitised `Event.uid` & `time_label`**, hardened ICS carriage-return escaping (with fuzz assertions), tightened CSV formula neutralisation against leading whitespace/newlines/pipes, blocked localhost/non-public targets in `safe_open()`. Provider ids with unusual characters are replaced by a hash, so two different ids can never merge into one release.
+- `RUN_WINDOWS.bat` installs the hash-locked packages into a private `.venv` (reinstalled when `requirements.lock` changes) instead of changing the system Python.
 
 ### Fixed
 - Summary bar counts (`render_stats`) now respect `other_currencies` consistently with the calendar table.

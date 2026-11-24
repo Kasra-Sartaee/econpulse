@@ -203,7 +203,7 @@ python -m econpulse             # or: python main.py
 python -m econpulse --demo      # sample data, no network
 ```
 
-On Windows you can also double-click `RUN_WINDOWS.bat` or `DEMO_WINDOWS.bat`. On Linux and macOS, `./run.sh` creates a virtual environment and starts the app.
+On Windows you can also double-click `RUN_WINDOWS.bat` (the first run installs the hash-checked packages into a private `.venv` folder, leaving your own Python untouched) or `DEMO_WINDOWS.bat`. On Linux and macOS, `./run.sh` creates a virtual environment and starts the app.
 
 <details>
 <summary><strong>Notes for macOS and Linux</strong></summary>

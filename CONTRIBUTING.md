@@ -65,7 +65,7 @@ For the bigger picture, with diagrams, see [docs/ARCHITECTURE.md](docs/ARCHITECT
 - Never add code that reads web pages from sites whose terms forbid automated access. New data sources must have terms that allow this kind of use; see [docs/PROVIDERS.md](docs/PROVIDERS.md).
 - Links opened from data go through `system.safe_open()`, which only opens https URLs.
 - Screenshots in `docs/screenshots/` and the demo animation are made with `python tools/screenshots.py --gif` (Windows). It uses demo data and captures only the app's own windows. Then `python tools/brand_assets.py` rebuilds the hero images, the logo and the social-preview card in `docs/assets/`.
-- Dependencies are pinned with hashes in `requirements.lock` (the app, for every platform), `requirements-build.lock` and `requirements-dev.lock`. To change one, edit `requirements.txt` or the matching `.in` file and regenerate the lock with the command at the top of the file. CI and `run.sh` only install hash-checked packages, and `tests/test_project.py` enforces it.
+- Dependencies are pinned with hashes in `requirements.lock` (the app, for every platform), `requirements-build.lock` and `requirements-dev.lock`. To change one, edit `requirements.txt` or the matching `.in` file and regenerate the lock with the command at the top of the file. CI, `run.sh` and `RUN_WINDOWS.bat` only install hash-checked packages, and `tests/test_project.py` enforces it.
 
 ## Pull requests
 
