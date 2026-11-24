@@ -73,17 +73,24 @@ def to_records(items) -> list[dict]:
         def value(name, row=item):
             return format_value(row.get(name), row.get('unit'), row.get('multiplier'), row.get('digits'))
 
-        previous = item.get('revisedPrevious')
+        raw_id = item.get('id')
+        orig_previous = value('previous')
+        revised = item.get('revisedPrevious')
+        shown_previous = value('revisedPrevious') if revised is not None else orig_previous
+        revised_from = (
+            orig_previous if revised is not None and orig_previous and orig_previous != shown_previous else ''
+        )
         records.append(
             {
-                'id': f'bq:{item.get("id")}' if item.get('id') else '',
+                'id': f'bq:{raw_id}' if raw_id not in (None, '') and not isinstance(raw_id, (dict, list)) else '',
                 'title': item.get('name'),
                 'country': item.get('currency'),
                 'date': when,
                 'impact': 'Holiday' if holiday else _IMPACT.get(str(item.get('importance')), 'Low'),
                 'actual': value('actual'),
                 'forecast': value('forecast'),
-                'previous': value('revisedPrevious') if previous is not None else value('previous'),
+                'previous': shown_previous,
+                'revised_from': revised_from,
                 'url': item.get('sourceUrl') or '',
                 'source': 'biquote',
                 'period': _period(item.get('period')),

@@ -16,14 +16,14 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
-from . import REPO_URL, __version__, i18n, system, theme, updates
+from . import REPO_URL, __version__, i18n, state, system, theme, updates
 from .controls import (
     FlatButton,
     IconButton,
     Label,
     Mirror,
 )
-from .core import CURRENCIES, AlertEngine, desired_timezone
+from .core import AlertEngine, desired_timezone
 from .demo import demo_events
 from .dialogs import DialogsMixin
 from .feed import fetch_events, load_cache
@@ -88,6 +88,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self._next_high = None
         self._focus_main = False
         self._full_frames = []
+        self._burst_fired = set()
         self.toasts = []
         self.demo = args.demo
         self.widget_period = 'day'  # always start in Today; Week is a session choice
@@ -256,10 +257,23 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
     def watched_currencies(self):
         """Currencies the user follows: the selection, else the majors (unless
         "Show other currencies" is on, in which case None means all)."""
-        selected = self.cfg.get('currencies') or []
-        if selected:
-            return set(selected)
-        return None if self.cfg.get('other_currencies') else set(CURRENCIES)
+        return state.watched_currencies(self.cfg)
+
+    def starred_keys(self):
+        return set(self.cfg.get('starred') or ())
+
+    def toggle_starred(self, e):
+        key = state.event_key(e)
+        current = list(self.cfg.get('starred') or [])
+        if key in current:
+            current.remove(key)
+        elif len(current) < 100:
+            current.append(key)
+        self.cfg['starred'] = current
+        save_settings(self.cfg)
+        self.render_main()
+        self.render_widget()
+        return key in current
 
     def next_high(self):
         now = self.now()
@@ -422,6 +436,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 now=now,
                 currencies=self.watched_currencies(),
                 enabled_stages=self.cfg.get('notify_minutes', [30, 15, 5, 0]),
+                starred=self.starred_keys(),
             )
             if found:
                 try:
@@ -434,46 +449,73 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 for (_instant, stage), group in grouped.items():
                     heading = i18n.alert_heading(stage)
                     detail = ', '.join(f'{e.currency} {e.title}' for e in group[:3])
-                    self.notify(heading, detail)
+                    if len(group) > 3:
+                        detail += f' (+{len(group) - 3})'
+                    self.notify(heading, detail, event=group[0])
+        if (
+            not self.demo
+            and self.cfg.get('burst_poll', False)
+            and self.has_actuals  # a schedule-only source has nothing to wait for
+            and not self.inflight
+            and not self.failures  # never add requests while the source is failing or backing off
+            and (not self.retry_until or now >= self.retry_until)
+        ):
+            token = state.due_burst_poll(
+                self.events,
+                now,
+                watched=self.watched_currencies(),
+                starred=self.starred_keys(),
+                fired_bursts=self._burst_fired,
+            )
+            if token:
+                self.refresh(force=True)
 
-    def notify(self, title, detail):
+    def notify(self, title, detail, *, event=None, accent='red'):
         if self.tray:
             try:
                 self.tray.notify(detail, title)
             except Exception:
                 pass
-        self.toast(title, detail)
+        self.toast(title, detail, event=event, accent=accent)
         if self.cfg.get('sound', True):
             system.play_alert_sound(self.root)
 
-    def toast(self, title, detail):
+    def toast(self, title, detail, *, event=None, accent='red'):
         p = self.p
         t = tk.Toplevel(self.root)
         t.overrideredirect(True)
         t.attributes('-topmost', True)
         rounded_ok = native_round(t, p['line_strong'])
         t.configure(bg=p['line_strong'])
-        inside = tk.Frame(t, bg=p['card'])
-        inside.pack(fill='both', expand=True, padx=0 if rounded_ok else 1, pady=0 if rounded_ok else 1)
+        outer = tk.Frame(t, bg=p['card'])
+        outer.pack(fill='both', expand=True, padx=0 if rounded_ok else 1, pady=0 if rounded_ok else 1)
+        tk.Frame(outer, bg=p.get(accent, p['red']), width=px(3)).pack(side='left', fill='y')
+        inside = tk.Frame(outer, bg=p['card'])
+        inside.pack(side='left', fill='both', expand=True)
         head = tk.Frame(inside, bg=p['card'])
-        head.pack(fill='x', padx=px(16), pady=(px(14), px(8)))
+        head.pack(fill='x', padx=px(14), pady=(px(14), px(8)))
         self.brand(head, p['card'], 16, 9).pack(side='left')
         self.label(head, self.tr('now'), 8, p['faded']).pack(side='left', padx=(px(6), 0))
-        self.label(inside, title, 11, p['text'], weight='semibold', anchor='w').pack(fill='x', padx=px(16))
-        self.label(inside, detail[:200], 9, p['soft'], wraplength=px(330), justify='left', anchor='w').pack(
-            fill='x', padx=px(16), pady=(px(3), px(16))
+        self.label(inside, title, 11, p['text'], weight='semibold', anchor='w').pack(fill='x', padx=px(14))
+        self.label(inside, detail[:200], 9, p['soft'], wraplength=px(326), justify='left', anchor='w').pack(
+            fill='x', padx=px(14), pady=(px(3), px(16))
         )
         t.update_idletasks()
         a = self.workarea()
         self.toasts = [x for x in self.toasts if x.winfo_exists()]
-        w, h = px(372), max(t.winfo_reqheight(), px(96))
+        w, h = px(376), max(t.winfo_reqheight(), px(96))
         offset = sum(x.winfo_height() + px(10) for x in self.toasts)
         t.geometry(f'{w}x{h}+{a[2] - w - px(16)}+{a[3] - h - px(16) - offset}')
         self.toasts.append(t)
         t.after(8000, t.destroy)
 
+        def dismiss(_e=None):
+            t.destroy()
+            if event is not None and not self._closing:
+                self.event_detail(event)
+
         def bind_all(widget):
-            widget.bind('<Button-1>', lambda _e: t.destroy())
+            widget.bind('<Button-1>', dismiss)
             for child in widget.winfo_children():
                 bind_all(child)
 
@@ -560,12 +602,33 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 continue  # superseded by a newer refresh (e.g. provider switch)
             self.inflight = False
             if status == 'ok':
+                prev_events = self.events
                 self.events, self.at, self.source = payload.events, payload.at, payload.source
                 self.coverage, self.has_actuals, self.provider = payload.coverage, payload.has_actuals, payload.provider
                 self.widget_refocus = True
                 self.warning = payload.warning
                 self.state = 'cached' if payload.is_cache else 'live'
                 self._after_fetch(payload.failed, payload.retry_after)
+                if not self.demo and self.cfg.get('notifications', True) and self.cfg.get('alert_actual', True):
+                    published = state.detect_published_actuals(
+                        prev_events,
+                        payload.events,
+                        watched=self.watched_currencies(),
+                        starred=self.starred_keys(),
+                        now=self.now(),
+                    )
+                    if published:
+                        # One notification (and one sound) per refresh, like the pre-release alerts.
+                        lines = []
+                        for ev in published[:3]:
+                            line = f'{ev.currency} {ev.title}: {ev.actual}'
+                            if ev.forecast:
+                                line += f' ({self.tr("Forecast")} {ev.forecast})'
+                            lines.append(line)
+                        if len(published) > 3:
+                            lines.append(f'+{len(published) - 3}')
+                        detail = '\n'.join(lines)
+                        self.notify(self.tr('Result published'), detail, event=published[0], accent='green')
             else:
                 message, retry_after = payload
                 self.warning = message

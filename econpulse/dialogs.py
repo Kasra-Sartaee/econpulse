@@ -8,7 +8,7 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from . import REPO_URL, __version__, i18n, system, theme
+from . import REPO_URL, __version__, i18n, state, system, theme
 from .controls import (
     FlatSelect,
     Panel,
@@ -94,7 +94,12 @@ class DialogsMixin:
     def event_detail(self, e):
         p, tz = self.p, self.tz()
         if self.detail_window and self.detail_window.winfo_exists():
-            self.detail_window.destroy()
+            # Close through the window's own handler so a half-typed note is saved.
+            close_previous = getattr(self.detail_window, 'close_detail', None)
+            if close_previous:
+                close_previous()
+            else:
+                self.detail_window.destroy()
         d, parent = self._dialog(f'{e.currency} · {e.title}')
         self.detail_window = d
         d.resizable(False, False)
@@ -160,6 +165,8 @@ class DialogsMixin:
         info = []
         if e.actual_tone:
             info.append(tr(f'Actual came in {e.actual_tone} than forecast.'))
+        if e.revised_from:
+            info.append(i18n.revised_from(e.revised_from))
         if e.period:
             info.append(f'{tr("Reference period")}: {e.period}')
         if e.is_holiday:
@@ -167,9 +174,63 @@ class DialogsMixin:
         info.append(f'{tr("Source")}: {e.source}')
         self.label(body, '\n'.join(info), 9, p['faded'], p['bg'], justify='left').pack(anchor='w')
 
+        # Per-event private trading note (persists across recurring releases of the same indicator)
+        note_key = state.event_key(e)
+        existing_note = state.load_event_notes().get(note_key, '')
+        self.label(body, 'Release note', 9, p['soft'], p['bg'], weight='semibold').pack(
+            anchor='w', pady=(px(14), px(4))
+        )
+        note_panel = Panel(body, p, radius=8, bg=p['bg'], fill=p['input'], outline=p['line_strong'])
+        note_panel.pack(fill='x')
+        note_box = tk.Text(
+            note_panel.body,
+            height=2,
+            bg=p['input'],
+            fg=p['text'],
+            insertbackground=p['text'],
+            font=font(9),
+            wrap='word',
+            bd=0,
+            highlightthickness=0,
+            padx=px(8),
+            pady=px(5),
+        )
+        note_box.pack(fill='x')
+        if existing_note:
+            note_box.insert('1.0', existing_note)
+
+        def close_detail():
+            if not d.winfo_exists():
+                return  # already closed (e.g. Escape and the close button in quick succession)
+            current = note_box.get('1.0', 'end-1c').strip()
+            if current != existing_note:
+                try:
+                    state.save_event_note(note_key, current)
+                except OSError:
+                    log.warning('could not save release note', exc_info=True)
+            d.destroy()
+
         buttons = tk.Frame(body, bg=p['bg'])
-        buttons.pack(fill='x', pady=(px(22), 0))
-        self.btn(buttons, 'Done', d.destroy, 'primary', None, 36).pack(side='right')
+        buttons.pack(fill='x', pady=(px(18), 0))
+        is_starred = note_key in self.starred_keys()
+        star_btn = None
+
+        def flip_star():
+            now_starred = self.toggle_starred(e)
+            star_btn.icon = 'star_fill' if now_starred else 'star'
+            star_btn.set_caption(self.tr('Starred' if now_starred else 'Star'))
+
+        star_btn = self.btn(
+            buttons,
+            'Starred' if is_starred else 'Star',
+            flip_star,
+            'normal',
+            None,
+            36,
+            icon='star_fill' if is_starred else 'star',
+        )
+        star_btn.pack(side='left')
+        self.btn(buttons, 'Done', close_detail, 'primary', None, 36).pack(side='right')
         if system.is_safe_url(e.url):
             self.btn(
                 buttons,
@@ -181,8 +242,10 @@ class DialogsMixin:
                 icon='link',
                 tooltip=system.url_host(e.url),
             ).pack(side='right', padx=(0, px(8)))
-        d.bind('<Escape>', lambda _e: d.destroy())
-        d.bind('<Return>', lambda _e: d.destroy())
+        d.close_detail = close_detail
+        d.protocol('WM_DELETE_WINDOW', close_detail)
+        d.bind('<Escape>', lambda _e: close_detail())
+        d.bind('<Return>', lambda _e: None if d.focus_get() is note_box else close_detail())
         self._present(d, parent, px(500), None)
 
     def notes(self):
@@ -392,6 +455,8 @@ class DialogsMixin:
 
         alerts = group(self.tr('Alerts'))
         toggle(alerts, self.tr('Desktop notifications for high-impact releases'), 'notifications')
+        toggle(alerts, self.tr('Notify when Actual is published'), 'alert_actual')
+        toggle(alerts, self.tr('Fast check after high-impact releases'), 'burst_poll')
         toggle(alerts, self.tr('Play a sound'), 'sound')
         stages = set(self.cfg.get('notify_minutes', [30, 15, 5, 0]))
         stage_buttons = {}

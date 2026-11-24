@@ -123,6 +123,9 @@ DEFAULTS = {
     'check_updates': False,
     'last_update_check': '',
     'latest_version': '',
+    'alert_actual': True,
+    'burst_poll': False,
+    'starred': [],
 }
 
 _CURRENCY = re.compile(r'[A-Z]{3}')
@@ -183,6 +186,11 @@ def _validators():
         'check_updates': lambda v: isinstance(v, bool),
         'last_update_check': _short_text,
         'latest_version': _short_text,
+        'alert_actual': lambda v: isinstance(v, bool),
+        'burst_poll': lambda v: isinstance(v, bool),
+        'starred': lambda v: (
+            isinstance(v, list) and len(v) <= 100 and all(isinstance(item, str) and 0 < len(item) <= 120 for item in v)
+        ),
     }
 
 

@@ -106,6 +106,33 @@ class DialogTests(AppTestCase):
         self.settle()
         self.assertFalse(self.app.detail_window.winfo_exists())
 
+    def test_release_details_star_and_per_event_note(self):
+        from econpulse import state
+
+        event = next(e for e in self.app.events if not e.is_holiday)
+        self.app.event_detail(event)
+        self.settle()
+        window = self.app.detail_window
+        button(window, 'flip_star').cmd()
+        self.assertIn(state.event_key(event), self.app.starred_keys())
+        note_widget = next(w for w in descendants(window) if isinstance(w, tk.Text))
+        note_widget.insert('1.0', 'Wait 2 minutes after print')
+        button(window, 'close_detail').cmd()
+        self.settle()
+        self.assertEqual(state.load_event_notes().get(state.event_key(event)), 'Wait 2 minutes after print')
+
+    def test_opening_another_release_saves_the_open_note(self):
+        from econpulse import state
+
+        first, second = [e for e in self.app.events if not e.is_holiday][:2]
+        self.app.event_detail(first)
+        self.settle()
+        note = next(w for w in descendants(self.app.detail_window) if isinstance(w, tk.Text))
+        note.insert('1.0', 'half-typed idea')
+        self.app.event_detail(second)  # e.g. a toast was clicked
+        self.settle()
+        self.assertEqual(state.load_event_notes().get(state.event_key(first)), 'half-typed idea')
+
     def test_notes_are_saved_to_the_data_folder(self):
         from econpulse.storage import data_dir
 
@@ -327,6 +354,30 @@ class LiveAppTests(AppTestCase):
         self.app.cfg['other_currencies'] = True
         self.app.render_stats()
         self.assertEqual(self.app.stat_widgets[1][0].cget('text'), '2')
+
+    def test_burst_check_only_runs_when_enabled_and_the_source_is_healthy(self):
+        from datetime import datetime, timedelta
+
+        from econpulse.core import parse_feed
+
+        just_out = datetime.now(UTC) - timedelta(seconds=50)
+        self.app.events = parse_feed(
+            [{'id': 'x:1', 'title': 'CPI', 'country': 'USD', 'impact': 'High', 'date': just_out.isoformat()}]
+        )
+        with mock.patch.object(self.app, 'refresh') as refresh:
+            self.app._tick()
+            refresh.assert_not_called()  # opt-in: off by default
+            self.app.cfg['burst_poll'] = True
+            self.app.failures = 1
+            self.app._tick()
+            refresh.assert_not_called()  # never while failing / backing off
+            self.app.failures, self.app.has_actuals = 0, False
+            self.app._tick()
+            refresh.assert_not_called()  # a schedule-only source has nothing to wait for
+            self.app.has_actuals = True
+            self.app._tick()
+            self.app._tick()
+            refresh.assert_called_once_with(force=True)
 
     def test_high_impact_alert_fires_once(self):
         from econpulse.storage import data_dir

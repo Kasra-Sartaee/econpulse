@@ -45,7 +45,9 @@ class WidgetWindowMixin:
         if not (self.widget_list and self.widget and self.widget.winfo_exists()):
             return
         tz = self.tz()
-        self.widget_list.update_data(self.visible('all', True), tz, focus=self.widget_refocus)
+        self.widget_list.update_data(
+            self.visible('all', True), tz, focus=self.widget_refocus, starred=self.starred_keys()
+        )
         self.widget_refocus = False
         if self.widget_hero is not None:
             self.widget_hero.set(self.next_high(), tz, self.now())

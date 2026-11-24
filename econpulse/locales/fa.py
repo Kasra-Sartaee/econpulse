@@ -180,6 +180,13 @@ STRINGS = {
     'Schedule only: this source has no Actual values.': 'فقط زمان\u200cبندی: این منبع مقادیر واقعی ندارد.',
     'Showing saved data.': 'نمایش داده\u200cهای ذخیره\u200cشده.',
     'Showing the Forex Factory schedule (no Actual values).': 'نمایش زمان\u200cبندی Forex Factory (بدون مقدار واقعی).',
+    'Notify when Actual is published': 'اعلان هنگام انتشار مقدار واقعی',
+    'Fast check after high-impact releases': 'بررسی سریع پس از انتشار اخبار مهم',
+    'Result published': 'نتیجه منتشر شد',
+    'Star': 'نشان\u200cگذاری',
+    'Starred': 'نشان\u200cگذاری\u200cشده',
+    'Release note': 'یادداشت این رویداد',
+    'Private note for this indicator (saved locally)': 'یادداشت شخصی برای این شاخص (ذخیره محلی)',
 }
 
 
@@ -243,6 +250,10 @@ def sync_status(source: str, stamp: str, age_minutes: int) -> str:
 
 def countdown_in(text: str) -> str:
     return f'{text} مانده'
+
+
+def revised_from(previous: str) -> str:
+    return f'مقدار قبلی از {previous} اصلاح شده است.'
 
 
 def weekday(d: date) -> str:

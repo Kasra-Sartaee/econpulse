@@ -347,7 +347,7 @@ class CalendarWindowMixin:
         focus = focus or self._focus_main
         if shown:
             self._focus_main = False
-        self.main_list.update_data(shown, self.tz(), focus=focus, keep_scroll=keep_scroll)
+        self.main_list.update_data(shown, self.tz(), focus=focus, keep_scroll=keep_scroll, starred=self.starred_keys())
         if self.table_count.winfo_exists():
             self.table_count.config(text='·   ' + i18n.count(len(shown), 'release'))
 

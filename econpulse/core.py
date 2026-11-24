@@ -69,6 +69,15 @@ def _clean_uid(value, fingerprint: str) -> str:
     return 'h:' + _digest(raw) if raw else _digest(fingerprint)
 
 
+def series_key(e: Event) -> str:
+    """Key for an indicator across its recurring releases (e.g. ``'USD|CPI y/y'``).
+
+    Used for starred releases and per-release notes, so a star or a note carries
+    over to next month's print. Capped to match the settings validator.
+    """
+    return f'{e.currency}|{e.title}'[:120]
+
+
 def normalize_impact(value: object, title: str) -> str:
     v = str(value or '').strip().casefold()
     t = title.casefold()
@@ -110,6 +119,7 @@ class Event:
     time_label: str = ''  # All Day / Tentative / Day 2: no verified release clock
     source_day: str = ''  # source civil date for untimed events
     actual_tone: str = ''  # 'better' / 'worse' vs forecast, as marked by the provider
+    revised_from: str = ''  # original previous value when revisedPrevious differs
 
     def to_record(self) -> dict:
         """Canonical dict shape accepted by :func:`parse_feed`."""
@@ -130,6 +140,7 @@ class Event:
             'time_label': self.time_label,
             'source_day': self.source_day,
             'actual_tone': self.actual_tone,
+            'revised_from': self.revised_from,
         }
 
     @property
@@ -224,6 +235,7 @@ def parse_feed(body: object) -> list[Event]:
                 time_label=time_label,
                 source_day=_text(record.get('source_day'), 10),
                 actual_tone=tone,
+                revised_from=_text(record.get('revised_from'), 40),
             )
         )
     if body and not events:
@@ -257,12 +269,16 @@ class AlertEngine:
         else:
             self.fired = set()
 
-    def check(self, events, now=None, *, currencies=None, enabled_stages=(30, 15, 5, 0)):
+    def check(self, events, now=None, *, currencies=None, enabled_stages=(30, 15, 5, 0), starred=None):
         now = now or datetime.now(UTC)
         selected = set(currencies or ())
+        starred_keys = set(starred or ())
         found = []
         for e in events:
-            if e.impact != 'High' or e.is_untimed or (selected and e.currency not in selected):
+            if e.is_untimed:
+                continue
+            is_starred = series_key(e) in starred_keys
+            if not is_starred and (e.impact != 'High' or (selected and e.currency not in selected)):
                 continue
             left = (e.instant - now).total_seconds()
             if left < -30 or left > 1800:

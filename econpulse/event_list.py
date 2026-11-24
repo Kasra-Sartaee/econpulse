@@ -21,7 +21,7 @@ from .controls import (
     rounded,
     wheel_units,
 )
-from .core import Event, weekly_sections
+from .core import Event, series_key, weekly_sections
 from .i18n import tr
 from .theme import fitter, font, glyph, num, px
 
@@ -189,6 +189,7 @@ class EventCanvas(tk.Frame):
         self.clock = clock
         self.period = period
         self.events: list[Event] = []
+        self.starred: set[str] = set()
         self.tz = UTC
         self.rows: list[Row] = []
         self._tops: list[int] = []
@@ -247,12 +248,14 @@ class EventCanvas(tk.Frame):
         self.period = period
         self.draw(keep_scroll=False)
 
-    def update_data(self, events, tz, focus=False, keep_scroll=True):
+    def update_data(self, events, tz, focus=False, keep_scroll=True, starred=None):
         events = list(events)
+        starred_set = set(starred) if starred is not None else self.starred
         if (
             self._layout_key is not None
             and tz == self.tz
             and events == self.events
+            and starred_set == self.starred
             and self._layout_key == self._layout_state()
         ):
             # Unchanged feed (the app re-renders every minute): keep the canvas
@@ -263,6 +266,7 @@ class EventCanvas(tk.Frame):
             return
         was_empty = not self.events
         self.events = events
+        self.starred = starred_set
         self.tz = tz
         if self.mode == 'widget':
             self.pending_focus = bool(focus or (was_empty and bool(self.events)))
@@ -717,8 +721,10 @@ class EventCanvas(tk.Frame):
             )
         self.mark(cols['impact'], cy, e.impact, tag)
         self.t(cols['ccy'], cy, e.currency, p['text'], 9, 'semibold', tags=tag)
+        is_starred = series_key(e) in self.starred
+        title_text = f'★ {e.title}' if is_starred else e.title
         title_w = cols['actual'] - px(84) - cols['event']
-        self.t(cols['event'], cy, e.title, p['text'], 10, width=title_w, tags=tag)
+        self.t(cols['event'], cy, title_text, p['amber'] if is_starred else p['text'], 10, width=title_w, tags=tag)
         if e.is_holiday:
             self.t(
                 cols['actual'] - px(70),
@@ -778,11 +784,22 @@ class EventCanvas(tk.Frame):
         # Title (max two lines)
         title_font = font(10, 'semibold')
         title_w = self._title_width(w)
-        lines = fitter.wrap(title_font, e.title, title_w)
+        is_starred = series_key(e) in self.starred
+        display_title = f'★ {e.title}' if is_starred else e.title
+        lines = fitter.wrap(title_font, display_title, title_w)
         if len(lines) > 2:
             lines = [lines[0], fitter.fit(title_font, ' '.join(lines[1:]), title_w)]
         for i, line in enumerate(lines):
-            self.t(tx, ty + i * px(self.WIDGET_LINE), line, p['text'], 10, 'semibold', width=title_w, tags=tag)
+            self.t(
+                tx,
+                ty + i * px(self.WIDGET_LINE),
+                line,
+                p['amber'] if is_starred and i == 0 else p['text'],
+                10,
+                'semibold',
+                width=title_w,
+                tags=tag,
+            )
         # Status
         if not e.is_holiday:
             text, colour = self.status(e, now)

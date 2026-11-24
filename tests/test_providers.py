@@ -178,6 +178,7 @@ class BiquoteTests(unittest.TestCase):
         payrolls = events['Sample Payrolls']
         self.assertEqual((payrolls.currency, payrolls.impact), ('USD', 'High'))
         self.assertEqual((payrolls.actual, payrolls.forecast, payrolls.previous), ('101K', '90K', '85K'))
+        self.assertEqual(payrolls.revised_from, '80K')
         self.assertEqual(payrolls.uid, 'bq:demo:1')
         self.assertEqual(payrolls.period, 'Oct 2026')
         self.assertEqual(payrolls.url, 'https://example.org/payrolls')

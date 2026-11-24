@@ -141,6 +141,12 @@ def countdown_in(text: str) -> str:
     return hook(text) if hook else f'in {text}'
 
 
+def revised_from(previous: str) -> str:
+    """'Previous revised from 80K'."""
+    hook = _hook('revised_from')
+    return hook(previous) if hook else f'Previous revised from {previous}.'
+
+
 def weekday(d: date) -> str:
     hook = _hook('weekday')
     return hook(d) if hook else d.strftime('%A')

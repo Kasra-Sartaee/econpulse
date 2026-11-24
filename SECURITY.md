@@ -26,7 +26,7 @@ All requests use HTTPS and identify the app as `EconPulse/<version> (+project UR
 - `settings.json`: preferences. On Windows, your optional FinanceCalendar.com API key is encrypted for your user account with Windows DPAPI; on macOS and Linux, the data folder (`0700`) and settings/notes files (`0600`) are restricted to your user account;
 - `cache-v4.json`, `ff-export-v4.json`: the last calendar data;
 - `fired.json`: which alerts were already shown;
-- `notes.txt`: your trading notes (plain text);
+- `notes.txt`, `event-notes.json`: your global and per-indicator trading notes (local only, written atomically);
 - `econpulse.log`: errors and warnings (at most about 0.5 MB). It never contains your API key.
 
 There is no telemetry.

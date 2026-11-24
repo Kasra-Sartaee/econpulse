@@ -52,7 +52,8 @@ flowchart TB
 |---|---|
 | `__init__.py` | Version, app name and repository: the single source for the UI, the network User-Agent, the build and the release check |
 | `app.py` | The `EconPulse` class: application state, the refresh cycle, the per-second tick, alerts, toasts and the tray icon. Window code lives in three mixins (`CalendarWindowMixin`, `WidgetWindowMixin`, `DialogsMixin`) so each file stays readable |
-| `core.py` | The immutable `Event` dataclass, provider-neutral parsing and validation, and `AlertEngine` (each alert fires once, across restarts) |
+| `state.py` | App state helpers with no Tk dependency, so they're easy to test: watched currencies, "Result published" detection, the opt-in post-release checks, per-indicator notes and the optional `next.json` status file |
+| `core.py` | The immutable `Event` dataclass, provider-neutral parsing and validation, and `AlertEngine` (each alert fires once, across restarts, including starred releases) |
 | `feed.py` | Picks the source, falls back, and reads and writes the on-disk cache |
 | `providers/` | One module per data source behind a small `Provider` interface. `base.http_get_json` is the only network code: HTTPS only, size-capped, honest User-Agent, typed errors for rate limits and rejected keys |
 | `event_list.py` | `EventCanvas`, a virtualised list that draws only the visible rows and retains drawing between ticks, and `NextUp`, the countdown hero |
@@ -94,6 +95,7 @@ Rules that keep this safe and polite:
 
 - **Tk is single-threaded.** Worker threads never touch widgets; they put results on a queue that the main thread polls.
 - **Polling is polite.** At most every 15 minutes, backing off to 30, 60 and 120 minutes after failures and honouring `Retry-After`. Fallback answers count as failures, so a broken source isn't hammered.
+- **The one exception is opt-in.** With *Fast check after high-impact releases* on, the app refreshes once 45 seconds and once 3 minutes after each watched release *time* that is still missing its Actual figure: two extra refreshes per busy minute, however many releases share it. It never runs while the source is failing or backing off, or on a schedule-only source (`state.due_burst_poll`).
 - **The screen is never empty if anything was ever loaded:** fresh data, then the fallback, then the cache.
 
 ## Drawing and performance

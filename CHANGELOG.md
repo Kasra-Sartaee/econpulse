@@ -4,8 +4,15 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Added
+- **Starred watchlist & per-event release notes**: star any indicator in Release Details to highlight it in lists and receive alerts even for medium/low-impact releases, and attach private notes (`event-notes.json`) that persist across recurring releases.
+- **"Result published" alerts**: one notification when Actual values arrive for watched releases (skipped for releases more than 30 minutes old, e.g. after a laptop wake). Clicking a notification opens that release's details.
+- **Fast check after high-impact releases** (opt-in, off by default): one refresh 45 s and one 3 min after each watched release *time* still missing its Actual, however many releases share that minute. Never while the source is failing or backing off, and never on a schedule-only source.
+- **Revision tracking**: shows `Previous revised from …` in Release Details when a provider supplies `revisedPrevious`.
+
 ### Changed
 - **Faster, lighter networking & idle loop**: gzip responses with a hard zip-bomb cap, conditional `ETag` / `If-Modified-Since` (`304 Not Modified`) support, concurrent weekly fetches for biquote, adaptive idle polling, skipping offscreen per-minute renders when hidden in the tray, binary-search sticky headers, and bounded LRU text/image caches.
+- **Pure-Python state module** (`econpulse/state.py`) and unified `Event.to_record()` serialization.
 - **Complete locale-driven i18n**: removed hardcoded Persian strings from core UI code, translated dialog titles/warnings, and made the system-tray menu update live when switching languages.
 - **Trimmed Windows PyInstaller bundle** by excluding unused stdlib modules.
 

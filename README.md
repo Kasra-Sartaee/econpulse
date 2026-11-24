@@ -227,7 +227,7 @@ Double-click `BUILD_WINDOWS.bat`. It creates a private virtual environment from 
 
 ## Data sources
 
-EconPulse has no server. Your computer fetches the calendar directly, at most every 15 minutes, and backs off (30, then 60, then 120 minutes) after errors or when a source asks it to wait.
+EconPulse has no server. Your computer fetches the calendar directly, at most every 15 minutes, and backs off (30, then 60, then 120 minutes) after errors or when a source asks it to wait. If you turn on *Fast check after high-impact releases* (off by default), it also checks 45 seconds and 3 minutes after a watched release time, while that release's Actual value is still missing.
 
 | Source | What it provides | Setup |
 |---|---|---|
