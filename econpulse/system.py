@@ -5,11 +5,15 @@ equivalents where they exist and quiet no-ops where they don't.
 
 from __future__ import annotations
 
+import base64
+import ipaddress
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-import subprocess  # nosec B404 - fixed programs only, never a shell
+
+# Fixed programs only; never invoked through a shell.
+import subprocess  # nosec B404
 import sys
 from urllib.parse import urlsplit
 import webbrowser
@@ -318,14 +322,23 @@ def play_alert_sound(widget) -> None:
 
 
 def is_safe_url(url) -> bool:
-    """Only plain https links to a real host are ever opened."""
+    """Only plain https links to a real public host are ever opened."""
     if not isinstance(url, str) or len(url) > 2000 or any(ch.isspace() for ch in url):
         return False
     try:
         parts = urlsplit(url)
     except ValueError:
         return False
-    return parts.scheme == 'https' and bool(parts.hostname) and not parts.username and not parts.password
+    if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password:
+        return False
+    host = parts.hostname.rstrip('.').lower()
+    if host == 'localhost' or host.endswith('.localhost'):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return ip.is_global
 
 
 def url_host(url) -> str:
@@ -346,7 +359,76 @@ def safe_open(url) -> bool:
 def open_folder(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     if sys.platform == 'win32':
-        os.startfile(str(path))  # noqa: S606  # nosec B606 - our own data folder
+        # Opens only our own local data folder.
+        os.startfile(str(path))  # noqa: S606  # nosec B606
     else:
         opener = 'open' if sys.platform == 'darwin' else 'xdg-open'
-        subprocess.Popen([opener, str(path)])  # noqa: S603  # nosec B603 - fixed program, no shell
+        # Fixed OS opener with no shell.
+        subprocess.Popen([opener, str(path)])  # noqa: S603  # nosec B603
+
+
+# --------------------------------------------------------------------------
+# Secret storage (Windows DPAPI; POSIX relies on 0600 file permissions)
+# --------------------------------------------------------------------------
+_DPAPI_PREFIX = 'dpapi:'
+
+
+def protect_secret(value: str) -> str:
+    """Encrypt a short secret for the current Windows user with DPAPI.
+
+    Returns plaintext unchanged on non-Windows platforms (where files are
+    written 0600) or if empty.
+    """
+    if not value or sys.platform != 'win32' or value.startswith(_DPAPI_PREFIX):
+        return value
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class DATA_BLOB(ctypes.Structure):
+            _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+
+        raw = value.encode('utf-8')
+        buf = ctypes.create_string_buffer(raw, len(raw))
+        blob_in = DATA_BLOB(len(raw), buf)
+        blob_out = DATA_BLOB()
+        crypt32 = ctypes.windll.crypt32
+        if not crypt32.CryptProtectData(
+            ctypes.byref(blob_in), 'EconPulse', None, None, None, 0x1, ctypes.byref(blob_out)
+        ):
+            return value
+        try:
+            encrypted = ctypes.string_at(blob_out.pbData, blob_out.cbData)
+            return _DPAPI_PREFIX + base64.b64encode(encrypted).decode('ascii')
+        finally:
+            ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+    except Exception:
+        return value
+
+
+def unprotect_secret(value: str) -> str:
+    """Decrypt a DPAPI-protected secret, or pass plaintext through (migration)."""
+    if not isinstance(value, str) or not value.startswith(_DPAPI_PREFIX):
+        return value if isinstance(value, str) else ''
+    if sys.platform != 'win32':
+        return ''
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class DATA_BLOB(ctypes.Structure):
+            _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+
+        raw = base64.b64decode(value[len(_DPAPI_PREFIX) :].encode('ascii'))
+        buf = ctypes.create_string_buffer(raw, len(raw))
+        blob_in = DATA_BLOB(len(raw), buf)
+        blob_out = DATA_BLOB()
+        crypt32 = ctypes.windll.crypt32
+        if not crypt32.CryptUnprotectData(ctypes.byref(blob_in), None, None, None, None, 0x1, ctypes.byref(blob_out)):
+            return ''
+        try:
+            return ctypes.string_at(blob_out.pbData, blob_out.cbData).decode('utf-8')
+        finally:
+            ctypes.windll.kernel32.LocalFree(blob_out.pbData)
+    except Exception:
+        return ''

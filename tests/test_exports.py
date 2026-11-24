@@ -60,8 +60,24 @@ class ExportTests(unittest.TestCase):
 
 class FormulaInjectionTests(unittest.TestCase):
     def test_formula_like_cells_are_neutralised(self):
-        for evil in ('=HYPERLINK("http://x","y")', '+1+cmd|"/c calc"!A0', '-2+3', '@SUM(A1)', '\t=1', '\r=1'):
+        for evil in (
+            '=HYPERLINK("http://x","y")',
+            '+1+cmd|"/c calc"!A0',
+            '-2+3',
+            '@SUM(A1)',
+            '\t=1',
+            '\r=1',
+            '\n=1',
+            ' =1+1',
+            '|cmd',
+        ):
             self.assertTrue(csv_cell(evil).startswith("'"), evil)
+
+    def test_ics_text_escapes_carriage_returns(self):
+        from econpulse.exports import ics_text
+
+        self.assertNotIn('\r', ics_text('a\r\nb\rc'))
+        self.assertEqual(ics_text('a\r\nb\rc'), 'a\\nb\\nc')
 
     def test_plain_figures_stay_numbers(self):
         for value in ('-0.2%', '+1.5K', '-1,200', '3.38M', '0.3%', '-0.865M', 'CPI m/m', ''):

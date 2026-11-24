@@ -8,8 +8,30 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 
 from . import APP_NAME
+
+
+def _chmod_private(path: Path, mode: int) -> None:
+    if sys.platform != 'win32':
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            pass
+
+
+def _replace_with_retry(src: Path, dst: Path) -> None:
+    """Windows Defender / indexers can hold brief locks on newly-replaced files."""
+    for delay in (0.025, 0.05, 0.1):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if sys.platform != 'win32':
+                raise
+            time.sleep(delay)
+    os.replace(src, dst)
 
 
 def data_dir() -> Path:
@@ -23,9 +45,32 @@ def data_dir() -> Path:
     return base / APP_NAME
 
 
+def safe_write_text(path: Path, text: str) -> None:
+    """Atomic text write with private POSIX permissions and Windows lock retries."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _chmod_private(path.parent, 0o700)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            'w', encoding='utf-8', dir=path.parent, delete=False, prefix='.' + path.name, suffix='.tmp'
+        ) as stream:
+            tmp = Path(stream.name)
+            stream.write(text)
+        _chmod_private(tmp, 0o600)
+        _replace_with_retry(tmp, path)
+    except BaseException:
+        if tmp is not None:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        raise
+
+
 def safe_write_json(path: Path, value, indent=None):
     """Atomic write: readers never observe a half-written file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    _chmod_private(path.parent, 0o700)
     tmp = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -34,7 +79,8 @@ def safe_write_json(path: Path, value, indent=None):
             tmp = Path(stream.name)
             # Compact for the large cache; settings stay human-readable.
             json.dump(value, stream, ensure_ascii=False, indent=indent, separators=None if indent else (',', ':'))
-        os.replace(tmp, path)
+        _chmod_private(tmp, 0o600)
+        _replace_with_retry(tmp, path)
     except BaseException:
         if tmp is not None:
             try:
@@ -159,8 +205,18 @@ def validate_settings(raw) -> dict:
 
 
 def load_settings() -> dict:
-    return validate_settings(read_json(data_dir() / 'settings.json', {}))
+    from .system import unprotect_secret
+
+    raw = read_json(data_dir() / 'settings.json', {})
+    if isinstance(raw, dict) and isinstance(raw.get('financecalendar_key'), str):
+        raw = {**raw, 'financecalendar_key': unprotect_secret(raw['financecalendar_key'])}
+    return validate_settings(raw)
 
 
 def save_settings(values: dict):
-    safe_write_json(data_dir() / 'settings.json', values, indent=2)
+    from .system import protect_secret
+
+    to_write = dict(values)
+    if isinstance(to_write.get('financecalendar_key'), str) and to_write['financecalendar_key']:
+        to_write['financecalendar_key'] = protect_secret(to_write['financecalendar_key'])
+    safe_write_json(data_dir() / 'settings.json', to_write, indent=2)

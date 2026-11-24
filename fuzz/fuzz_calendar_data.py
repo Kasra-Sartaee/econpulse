@@ -143,6 +143,8 @@ def check_events(records) -> None:
     uids = [e.uid for e in events]
     assert len(uids) == len(set(uids)), 'duplicate events'
     for e in events:
+        assert e.uid and len(e.uid) <= 120 and not any(ch in e.uid for ch in '\r\n\t ;,'), repr(e.uid)
+        assert len(e.time_label) <= 40 and not any(ch in e.time_label for ch in '\r\n'), repr(e.time_label)
         assert _CURRENCY.fullmatch(e.currency), e.currency
         assert e.title and e.title == e.title.strip() and len(e.title) <= 300, repr(e.title)
         assert len(e.url) <= 2000 and all(len(v) <= 40 for v in (e.actual, e.forecast, e.previous))
@@ -153,9 +155,11 @@ def check_events(records) -> None:
         e.countdown(NOW)
         for cell in (e.title, e.actual, e.forecast, e.previous):
             safe = csv_cell(cell)
-            assert safe[:1] not in ('=', '+', '@', '\t', '\r') or _PLAIN_NUMBER.fullmatch(safe), repr(safe)
+            assert safe[:1] not in ('=', '+', '@', '|', '\t', '\r', '\n') or _PLAIN_NUMBER.fullmatch(safe), repr(safe)
             assert not safe.startswith('-') or _PLAIN_NUMBER.fullmatch(safe), repr(safe)
-        line = fold(f'SUMMARY:{e.currency} - {ics_text(e.title)}')
+        summary = ics_text(e.title)
+        assert '\r' not in summary and '\n' not in summary, repr(summary)
+        line = fold(f'SUMMARY:{e.currency} - {summary}')
         assert all(len(part.encode('utf-8')) <= 75 for part in line.split('\r\n ')), line
         json.dumps(serialize(e))
     again = parse_feed([serialize(e) for e in events]) if events else []

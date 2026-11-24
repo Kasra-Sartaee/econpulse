@@ -103,6 +103,33 @@ class EconomicCalendarTests(unittest.TestCase):
     def test_time_bounds(self):
         self.assertEqual(AlertEngine().check([self.event(130)], self.now), [])
 
+    def test_uid_and_time_label_are_sanitised_and_capped(self):
+        raw = [
+            {
+                'id': 'evil\r\nBEGIN:VALARM\r\n' + 'x' * 500,
+                'title': 'CPI',
+                'country': 'USD',
+                'date': self.now.isoformat(),
+                'time_label': 'Tentative\r\nLINE2',
+            }
+        ]
+        e = parse_feed(raw)[0]
+        self.assertLessEqual(len(e.uid), 120)
+        self.assertNotIn('\r', e.uid)
+        self.assertNotIn('\n', e.uid)
+        self.assertNotIn('\r', e.time_label)
+        self.assertNotIn('\n', e.time_label)
+
+    def test_provider_ids_never_collide_after_cleaning(self):
+        def uid(raw):
+            return parse_feed([{'id': raw, 'title': 'CPI', 'country': 'USD', 'date': self.now.isoformat()}])[0].uid
+
+        self.assertEqual(uid('bq:123'), 'bq:123')  # plain ids are kept exactly
+        self.assertNotEqual(uid('x y'), uid('x_y'))
+        self.assertEqual(uid('x y'), uid('x y'))  # still stable across fetches
+        self.assertNotEqual(uid('a' * 130), uid('a' * 131))  # long ids are hashed, not truncated
+        self.assertLessEqual(len(uid('a' * 500)), 120)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -6,15 +6,65 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+import ipaddress
 import json
+import ssl
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from .. import USER_AGENT
 from ..core import Event
 
 MAX_BYTES = 4_500_000
+_SENSITIVE_HEADERS = {'x-api-key', 'authorization', 'cookie'}
+
+
+def _is_public_host(hostname: str | None) -> bool:
+    if not hostname:
+        return False
+    host = hostname.rstrip('.').lower()
+    if host in ('localhost',) or host.endswith('.localhost'):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return ip.is_global
+
+
+def _tls_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    """Allow at most 3 HTTPS redirects to public hosts; strip credentials cross-origin."""
+
+    max_redirections = 3
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parts = urlsplit(newurl)
+        if parts.scheme != 'https' or not _is_public_host(parts.hostname):
+            raise ProviderError('refusing an unsafe redirect')
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is None:
+            return None
+        old_parts = urlsplit(req.full_url)
+        if (old_parts.hostname or '').lower() != (parts.hostname or '').lower() or old_parts.port != parts.port:
+            for store in (new_req.headers, new_req.unredirected_hdrs):
+                for key in list(store):
+                    if key.lower() in _SENSITIVE_HEADERS:
+                        del store[key]
+        return new_req
+
+
+_OPENER = build_opener(HTTPSHandler(context=_tls_context()), _SafeRedirectHandler())
+
+
+def urlopen(request: Request, timeout: float = 17):
+    return _OPENER.open(request, timeout=timeout)
 
 
 class ProviderError(Exception):
@@ -68,12 +118,13 @@ def http_get_json(url: str, *, params: dict | None = None, headers: dict | None 
     """
     if params:
         url = f'{url}?{urlencode(params)}'
-    if urlsplit(url).scheme != 'https':
+    parts = urlsplit(url)
+    if parts.scheme != 'https' or not _is_public_host(parts.hostname):
         raise ProviderError('refusing a non-HTTPS request')
     headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json', **(headers or {})}
     request = Request(url, headers=headers)  # noqa: S310  # nosec B310 - https enforced above
     try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310  # nosec B310 - https enforced above
+        with urlopen(request, timeout=timeout) as response:  # nosec B310
             raw = response.read(MAX_BYTES + 1)
     except HTTPError as exc:
         if exc.code in (429, 503):

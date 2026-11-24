@@ -22,7 +22,7 @@ from .controls import (
 from .core import CURRENCIES, TIMEZONES
 from .exports import save_csv, save_ics
 from .providers import PROVIDERS
-from .storage import data_dir, save_settings, validate_settings
+from .storage import data_dir, safe_write_text, save_settings, validate_settings
 from .system import native_titlebar
 from .theme import font, px
 
@@ -227,8 +227,7 @@ class DialogsMixin:
         def save():
             dest = data_dir() / 'notes.txt'
             try:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(t.get('1.0', 'end-1c'), encoding='utf-8')
+                safe_write_text(dest, t.get('1.0', 'end-1c'))
             except OSError as exc:
                 messagebox.showerror('Notes', f'Could not save notes:\n{exc}', parent=d)
                 return

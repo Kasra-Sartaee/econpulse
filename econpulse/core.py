@@ -42,11 +42,31 @@ def desired_timezone(name: str):
 
 
 _CURRENCY = re.compile(r'[A-Z]{3}')
+_UID_UNSAFE = re.compile(r'[^A-Za-z0-9._:@/-]+')
 
 
 def _text(value, limit: int = 300) -> str:
     """Provider text, whitespace-normalised and length-capped (defensive against odd feeds)."""
     return ' '.join(str(value or '').split())[:limit].rstrip()
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha1(text.encode('utf8'), usedforsecurity=False).hexdigest()[:20]
+
+
+def _clean_uid(value, fingerprint: str) -> str:
+    """Provider event id, safe for ICS and the cache.
+
+    A plain id (letters, digits, ``._:@/-``, at most 120 characters) is kept as is.
+    Anything else is replaced by its hash rather than rewritten, so two different
+    ids can never collapse into the same uid (``'a b'`` and ``'a_b'`` stay distinct).
+    """
+    if value in (None, '') or isinstance(value, (dict, list)):
+        return _digest(fingerprint)
+    raw = str(value).strip()
+    if raw and len(raw) <= 120 and not _UID_UNSAFE.search(raw):
+        return raw
+    return 'h:' + _digest(raw) if raw else _digest(fingerprint)
 
 
 def normalize_impact(value: object, title: str) -> str:
@@ -153,15 +173,12 @@ def parse_feed(body: object) -> list[Event]:
         except (ValueError, TypeError, OverflowError):
             continue
         impact = normalize_impact(record.get('impact'), title)
-        time_label = str(record.get('time_label') or '').strip()
+        time_label = _text(record.get('time_label'), 40)
         if impact == 'Holiday' and not time_label:
             time_label = 'All Day'
         fingerprint = f'{stamp.isoformat()}|{currency}|{title}|{impact}'
         # Stable provider ids survive a rescheduled release and prevent duplicate alerts.
-        uid = (
-            str(record.get('id') or '').strip()
-            or hashlib.sha1(fingerprint.encode('utf8'), usedforsecurity=False).hexdigest()[:20]
-        )
+        uid = _clean_uid(record.get('id'), fingerprint)
         if uid in seen:
             continue
         seen.add(uid)
@@ -183,7 +200,7 @@ def parse_feed(body: object) -> list[Event]:
                 status=_text(record.get('status'), 40) or 'scheduled',
                 period=_text(record.get('period'), 40),
                 confidence=_text(record.get('confidence'), 40),
-                time_label=time_label[:40],
+                time_label=time_label,
                 source_day=_text(record.get('source_day'), 10),
                 actual_tone=tone,
             )

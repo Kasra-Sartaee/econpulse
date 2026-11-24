@@ -75,6 +75,25 @@ class AtomicWriteTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()), {'ok': 1})
             self.assertEqual([p.name for p in Path(td).iterdir()], ['settings.json'])
 
+    def test_safe_write_text_and_secret_roundtrip(self):
+        import os
+        import sys
+        from unittest import mock
+
+        with TemporaryDirectory() as td:
+            note = Path(td) / 'notes.txt'
+            storage.safe_write_text(note, 'hello world')
+            self.assertEqual(note.read_text(encoding='utf-8'), 'hello world')
+            with mock.patch.dict(os.environ, {'APPDATA': td, 'XDG_CONFIG_HOME': td}):
+                cfg = {**storage.DEFAULTS, 'financecalendar_key': 'fc_live_secret_key_99'}
+                storage.save_settings(cfg)
+                raw = json.loads((storage.data_dir() / 'settings.json').read_text(encoding='utf-8'))
+                if sys.platform == 'win32':
+                    self.assertTrue(raw['financecalendar_key'].startswith('dpapi:'))
+                    self.assertNotIn('fc_live_secret_key_99', raw['financecalendar_key'])
+                reloaded = storage.load_settings()
+                self.assertEqual(reloaded['financecalendar_key'], 'fc_live_secret_key_99')
+
 
 if __name__ == '__main__':
     unittest.main()

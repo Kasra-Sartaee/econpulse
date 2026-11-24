@@ -256,6 +256,22 @@ class HttpClientTests(unittest.TestCase):
         self.assertIsNone(base._retry_after('soon'))
         self.assertEqual(base._retry_after('999999'), 24 * 3600)
 
+    def test_redirects_block_downgrade_localhost_and_strip_api_key_cross_origin(self):
+        from urllib.request import Request
+
+        handler = base._SafeRedirectHandler()
+        req = Request('https://api.example.org/v1', headers={'X-API-Key': 'secret', 'Accept': 'application/json'})
+        for unsafe in ('http://api.example.org/v1', 'https://localhost/secret', 'https://127.0.0.1/secret'):
+            with self.assertRaises(ProviderError):
+                handler.redirect_request(req, None, 302, 'Found', {}, unsafe)
+        cross = handler.redirect_request(req, None, 302, 'Found', {}, 'https://cdn.other.org/data')
+        self.assertNotIn('X-api-key', cross.headers)
+        self.assertNotIn('X-API-Key', cross.headers)
+        same = handler.redirect_request(req, None, 302, 'Found', {}, 'https://api.example.org/v2')
+        self.assertEqual(same.get_header('X-api-key'), 'secret')
+        with self.assertRaises(ProviderError):
+            base.http_get_json('https://127.0.0.1/local')
+
 
 class PipelineTests(unittest.TestCase):
     """fetch_events: selected source -> recent cache -> official export -> stale cache."""

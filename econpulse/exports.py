@@ -14,12 +14,14 @@ _PLAIN_NUMBER = re.compile(r'[-+]?\d[\d,]*(\.\d+)?\s*[%KMBTkmbt]?')
 def csv_cell(value) -> str:
     """Neutralise spreadsheet formulas (CSV injection).
 
-    Text from a data feed that starts with = + - @ (or a tab/CR) could be run
-    as a formula by Excel or LibreOffice; such cells get a leading apostrophe.
-    Plain figures like "-0.2%" are left alone so they stay numbers.
+    Text from a data feed that starts with = + - @ | (or leading whitespace/tabs/CR/LF
+    followed by a formula trigger) could be run as a formula by Excel or LibreOffice;
+    such cells get a leading apostrophe. Plain figures like "-0.2%" stay numbers.
     """
     text = str(value)
-    if text[:1] in ('=', '+', '-', '@', '\t', '\r') and not _PLAIN_NUMBER.fullmatch(text):
+    stripped = text.lstrip(' \t\r\n')
+    triggers = ('=', '+', '-', '@', '|')
+    if (text[:1] in (*triggers, '\t', '\r', '\n') or stripped[:1] in triggers) and not _PLAIN_NUMBER.fullmatch(text):
         return "'" + text
     return text
 
@@ -43,7 +45,15 @@ def save_csv(path, events, tz):
 
 
 def ics_text(value):
-    return str(value).replace('\\', '\\\\').replace('\n', '\\n').replace(';', '\\;').replace(',', '\\,')
+    return (
+        str(value)
+        .replace('\\', '\\\\')
+        .replace('\r\n', '\\n')
+        .replace('\r', '\\n')
+        .replace('\n', '\\n')
+        .replace(';', '\\;')
+        .replace(',', '\\,')
+    )
 
 
 def fold(line):
@@ -73,10 +83,11 @@ def save_ics(path, events, tz):
         'METHOD:PUBLISH',
     ]
     for e in events:
+        uid = ''.join(ch for ch in str(e.uid) if ch >= ' ' and ch not in '\x7f;,')[:120]
         lines.extend(
             [
                 'BEGIN:VEVENT',
-                f'UID:{e.uid}@econpulse.local',
+                f'UID:{uid}@econpulse.local',
                 f'DTSTAMP:{stamp}',
                 f'SUMMARY:{ics_text(e.currency + " - " + e.title)}',
                 'DESCRIPTION:' + ics_text(f'Impact: {e.impact} / Forecast: {e.forecast} / Previous: {e.previous}'),
