@@ -51,6 +51,8 @@ class RetainedDrawingTests(unittest.TestCase):
 
     def tearDown(self):
         self.root.destroy()
+        self.root = self.list = None
+        helpers.collect_tk_garbage()
 
     def items(self):
         return self.list.cv.find_all()
@@ -141,10 +143,15 @@ class AppLifecycleTests(unittest.TestCase):
         self.root.update()
 
     def tearDown(self):
+        self.app._closing = True
         try:
+            for pending in self.root.tk.splitlist(self.root.tk.call('after', 'info')):
+                self.root.tk.call('after', 'cancel', pending)
             self.root.destroy()
         except tk.TclError:
             pass
+        self.app = self.root = None
+        helpers.collect_tk_garbage()
         self.env.stop()
         self.tmp.cleanup()
 

@@ -70,12 +70,15 @@ class AppTestCase(unittest.TestCase):
         self.root.update()
 
     def tearDown(self):
+        self.app._closing = True
         try:
             for pending in self.root.tk.splitlist(self.root.tk.call('after', 'info')):
                 self.root.tk.call('after', 'cancel', pending)
             self.root.destroy()
         except tk.TclError:
             pass
+        self.app = self.root = None
+        helpers.collect_tk_garbage()
         i18n.set_language('en')
         for patch in reversed(self.patches):
             patch.stop()

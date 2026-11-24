@@ -2,6 +2,7 @@
 importable, so the tests run from any working directory."""
 
 from datetime import UTC, datetime
+import gc
 import logging
 from pathlib import Path
 import sys
@@ -16,6 +17,18 @@ NOW = datetime(2026, 11, 11, 12, tzinfo=UTC)
 # Expected failures are logged by the code under test; keep test output quiet.
 logging.getLogger('econpulse').addHandler(logging.NullHandler())
 logging.getLogger('econpulse').propagate = False
+
+
+def collect_tk_garbage():
+    """Free destroyed Tk roots now, on the main thread.
+
+    A destroyed root can linger in a reference cycle. If the garbage collector
+    later runs on a worker thread (biquote fetches in parallel, the app fetches
+    in the background), Tcl aborts the whole process with "Tcl_AsyncDelete:
+    async handler deleted by the wrong thread". Call this after dropping the
+    last reference to a root, and before tests that start threads.
+    """
+    gc.collect()
 
 
 def tk_root(withdraw=True):

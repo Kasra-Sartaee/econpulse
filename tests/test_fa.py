@@ -145,5 +145,9 @@ class MirrorTests(Persian):
         self.assertGreater(positions['fa'], 0.5)  # ...and near the right edge in Persian
 
 
+def tearDownModule():
+    helpers.collect_tk_garbage()
+
+
 if __name__ == '__main__':
     unittest.main()

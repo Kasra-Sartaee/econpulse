@@ -12,10 +12,16 @@ import unittest
 from unittest import mock
 from urllib.error import HTTPError
 
-from helpers import NOW
+from helpers import NOW, collect_tk_garbage
 
 from econpulse import USER_AGENT, feed
 from econpulse.providers import PROVIDERS, KeyRejected, ProviderError, RateLimited, base, biquote, financecalendar
+
+
+def setUpModule():
+    # biquote fetches on worker threads; free earlier modules' Tk roots on this thread first.
+    collect_tk_garbage()
+
 
 BIQUOTE_ROWS = [
     {

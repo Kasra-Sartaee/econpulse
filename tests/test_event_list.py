@@ -7,7 +7,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from helpers import NOW, tk_root
+from helpers import NOW, collect_tk_garbage, tk_root
 
 from econpulse import theme
 from econpulse.app import EconPulse
@@ -21,7 +21,11 @@ class TextFitterTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        for pending in cls.root.tk.splitlist(cls.root.tk.call('after', 'info')):
+            cls.root.tk.call('after', 'cancel', pending)
         cls.root.destroy()
+        cls.root = None
+        collect_tk_garbage()
 
     def test_fit_and_wrap(self):
         ft = theme.font(10)
@@ -44,7 +48,11 @@ class VirtualisedListTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        for pending in cls.root.tk.splitlist(cls.root.tk.call('after', 'info')):
+            cls.root.tk.call('after', 'cancel', pending)
         cls.root.destroy()
+        cls.root = None
+        collect_tk_garbage()
 
     def make(self, mode, n=300):
         from econpulse.event_list import EventCanvas
