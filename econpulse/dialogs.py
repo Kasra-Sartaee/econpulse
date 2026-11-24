@@ -120,7 +120,7 @@ class DialogsMixin:
             if e.instant <= now:
                 when += '   ·   ' + self.tr('released')
             else:
-                when += '   ·   ' + (f'{e.countdown(now)} مانده' if i18n.rtl() else 'in ' + e.countdown(now))
+                when += '   ·   ' + i18n.countdown_in(e.countdown(now))
         self.label(body, when, 9, p['soft'], p['bg']).pack(anchor='w')
 
         stats = Panel(body, p, radius=12)
@@ -187,7 +187,7 @@ class DialogsMixin:
 
     def notes(self):
         p = self.p
-        d, parent = self._dialog('Trading notes')
+        d, parent = self._dialog(self.tr('Trading notes'))
         d.minsize(px(420), px(330))
         self.label(d, 'Trading notes', 17, p['text'], p['bg'], weight='semibold').pack(
             anchor='w', padx=px(28), pady=(px(24), px(2))
@@ -229,7 +229,7 @@ class DialogsMixin:
             try:
                 safe_write_text(dest, t.get('1.0', 'end-1c'))
             except OSError as exc:
-                messagebox.showerror('Notes', f'Could not save notes:\n{exc}', parent=d)
+                messagebox.showerror(self.tr('Notes'), f'{self.tr("Could not save notes:")}\n{exc}', parent=d)
                 return
             d.destroy()
 
@@ -260,7 +260,7 @@ class DialogsMixin:
             else:
                 save_csv(filename, events, self.tz())
         except OSError as e:
-            messagebox.showerror('Export failed', str(e), parent=self.root)
+            messagebox.showerror(self.tr('Export failed'), str(e), parent=self.root)
 
     def settings(self):
         if self.setting_window and self.setting_window.winfo_exists():
@@ -268,7 +268,7 @@ class DialogsMixin:
             self.setting_window.focus_force()
             return
         p = self.p
-        d, parent = self._dialog('Preferences')
+        d, parent = self._dialog(self.tr('Preferences'))
         self.setting_window = d
         d.minsize(px(540), px(460))
         header = tk.Frame(d, bg=p['bg'])
@@ -524,6 +524,11 @@ class DialogsMixin:
             after = (self.cfg.get('provider'), self.cfg.get('financecalendar_key'), self.cfg.get('check_updates'))
             source_changed = before[:2] != after[:2]
             i18n.set_language(self.cfg.get('language', 'en'))
+            if self.tray:
+                try:
+                    self.tray.update_menu()
+                except Exception:
+                    pass
             cancel()
             showing = self.widget is not None and self.widget.winfo_exists()
             if showing:

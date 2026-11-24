@@ -171,6 +171,15 @@ STRINGS = {
     'Report an issue': 'گزارش مشکل',
     'Open data folder': 'پوشه داده\u200cها',
     'Copy diagnostics': 'کپی اطلاعات عیب\u200cیابی',
+    'Notes': 'یادداشت\u200cها',
+    'Could not save notes:': 'ذخیره یادداشت\u200cها انجام نشد:',
+    'Export failed': 'خروجی با خطا روبه\u200cرو شد',
+    'API key rejected': 'کلید API پذیرفته نشد',
+    'asked to slow down': 'درخواست کاهش سرعت ارسال شد',
+    'unreadable response': 'پاسخ غیرقابل خواندن',
+    'Schedule only: this source has no Actual values.': 'فقط زمان\u200cبندی: این منبع مقادیر واقعی ندارد.',
+    'Showing saved data.': 'نمایش داده\u200cهای ذخیره\u200cشده.',
+    'Showing the Forex Factory schedule (no Actual values).': 'نمایش زمان\u200cبندی Forex Factory (بدون مقدار واقعی).',
 }
 
 
@@ -222,6 +231,18 @@ def alert_heading(stage: int) -> str:
 
 def impact_text(impact: str) -> str:
     return 'اهمیت ' + STRINGS.get(impact, impact)
+
+
+def sync_detail(stamp: str, age_minutes: int) -> str:
+    return f'همگام\u200cسازی {stamp}' + (f'  ·  {digits(age_minutes)} دقیقه پیش' if age_minutes >= 1 else '')
+
+
+def sync_status(source: str, stamp: str, age_minutes: int) -> str:
+    return f'{STRINGS.get(source, source)}  ·  آخرین همگام\u200cسازی {stamp}  ·  {digits(age_minutes)} دقیقه پیش'
+
+
+def countdown_in(text: str) -> str:
+    return f'{text} مانده'
 
 
 def weekday(d: date) -> str:

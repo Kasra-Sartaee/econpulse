@@ -119,6 +119,28 @@ def impact_text(impact: str) -> str:
     return hook(impact) if hook else f'{impact} impact'
 
 
+def sync_detail(stamp: str, age_minutes: int) -> str:
+    """Short sync subtitle in the sidebar, e.g. 'Synced 14:30 · 5m ago'."""
+    hook = _hook('sync_detail')
+    if hook:
+        return hook(stamp, age_minutes)
+    return f'Synced {stamp}' + (f' · {age_minutes}m ago' if age_minutes >= 1 else '')
+
+
+def sync_status(source: str, stamp: str, age_minutes: int) -> str:
+    """Footer status line, e.g. 'biquote  ·  last sync 14:30 (5m ago)'."""
+    hook = _hook('sync_status')
+    if hook:
+        return hook(source, stamp, age_minutes)
+    return f'{source}  ·  last sync {stamp} ({age_minutes}m ago)'
+
+
+def countdown_in(text: str) -> str:
+    """'in 00:12:30' / '00:12:30 مانده'."""
+    hook = _hook('countdown_in')
+    return hook(text) if hook else f'in {text}'
+
+
 def weekday(d: date) -> str:
     hook = _hook('weekday')
     return hook(d) if hook else d.strftime('%A')

@@ -6,6 +6,7 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 
 ### Changed
 - **Faster, lighter networking & idle loop**: gzip responses with a hard zip-bomb cap, conditional `ETag` / `If-Modified-Since` (`304 Not Modified`) support, concurrent weekly fetches for biquote, adaptive idle polling, skipping offscreen per-minute renders when hidden in the tray, binary-search sticky headers, and bounded LRU text/image caches.
+- **Complete locale-driven i18n**: removed hardcoded Persian strings from core UI code, translated dialog titles/warnings, and made the system-tray menu update live when switching languages.
 - **Trimmed Windows PyInstaller bundle** by excluding unused stdlib modules.
 
 ### Security

@@ -331,10 +331,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         if self.at:
             age = max(0, int((self.now() - self.at).total_seconds() / 60))
             stamp = self.at.astimezone(self.tz()).strftime('%H:%M')
-            if i18n.rtl():
-                detail = f'همگام‌سازی {stamp}' + (f'  ·  {i18n.digits(age)} دقیقه پیش' if age >= 1 else '')
-            else:
-                detail = f'Synced {stamp}' + (f' · {age}m ago' if age >= 1 else '')
+            detail = i18n.sync_detail(stamp, age)
             if self.inflight:
                 detail = tr('Syncing…')
             live = self.state == 'live'
@@ -357,10 +354,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         elif self.at:
             age = max(int((self.now() - self.at).total_seconds() / 60), 0)
             stamp = f'{self.at.astimezone(self.tz()):%H:%M}'
-            if i18n.rtl():
-                msg = f'{self.tr(self.source)}  ·  آخرین همگام‌سازی {stamp}  ·  {i18n.digits(age)} دقیقه پیش'
-            else:
-                msg = f'{self.source}  ·  last sync {stamp} ({age}m ago)'
+            msg = i18n.sync_status(self.source, stamp, age)
             if self.inflight:
                 msg += '  ·  ' + self.tr('Syncing…')
             if self.warning:
@@ -656,34 +650,33 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             def menu_action(action):
                 return lambda _icon, _item: dispatch(action)
 
+            def label(text):
+                return lambda _item, s=text: self.menu_text(s)
+
             menu = pystray.Menu(
                 pystray.MenuItem(
-                    self.menu_text('Open last view (double-click)'), menu_action(self.restore_last_view), default=True
+                    label('Open last view (double-click)'), menu_action(self.restore_last_view), default=True
                 ),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(self.menu_text('Show widget'), menu_action(self.show_widget)),
-                pystray.MenuItem(self.menu_text('Open full calendar'), menu_action(self.show_full)),
-                pystray.MenuItem(
-                    self.menu_text('Widget: Today'), menu_action(lambda: self.show_tray_widget_period('day'))
-                ),
-                pystray.MenuItem(
-                    self.menu_text('Widget: Week'), menu_action(lambda: self.show_tray_widget_period('week'))
-                ),
+                pystray.MenuItem(label('Show widget'), menu_action(self.show_widget)),
+                pystray.MenuItem(label('Open full calendar'), menu_action(self.show_full)),
+                pystray.MenuItem(label('Widget: Today'), menu_action(lambda: self.show_tray_widget_period('day'))),
+                pystray.MenuItem(label('Widget: Week'), menu_action(lambda: self.show_tray_widget_period('week'))),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(self.menu_text('Toggle Always on Top'), menu_action(self.toggle_topmost_from_tray)),
+                pystray.MenuItem(label('Toggle Always on Top'), menu_action(self.toggle_topmost_from_tray)),
                 pystray.MenuItem(
-                    self.menu_text('Toggle start at login'),
+                    label('Toggle start at login'),
                     menu_action(self.toggle_startup_from_tray),
                     visible=system.startup_supported(),
                 ),
-                pystray.MenuItem(self.menu_text('Refresh calendar'), menu_action(lambda: self.refresh(False))),
+                pystray.MenuItem(label('Refresh calendar'), menu_action(lambda: self.refresh(False))),
                 pystray.MenuItem(
-                    lambda _item: self.menu_text('Get the new version'),
+                    label('Get the new version'),
                     menu_action(self.open_update),
                     visible=lambda _item: bool(self.update_info),
                 ),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem(self.menu_text('Exit EconPulse'), menu_action(self.quit)),
+                pystray.MenuItem(label('Exit EconPulse'), menu_action(self.quit)),
             )
             self.tray = pystray.Icon('EconPulse', image, 'EconPulse — Economic Calendar', menu)
             threading.Thread(target=self.tray.run, daemon=True, name='tray').start()

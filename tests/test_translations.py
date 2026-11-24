@@ -16,7 +16,7 @@ from econpulse.providers import PROVIDERS
 from econpulse.ui_calendar import TAB_NAMES, TAB_TITLES
 
 # Positional index of the user-visible text for helpers that translate it.
-TEXT_ARG = {'tr': 0, 'menu_text': 0, 'label': 1, 'btn': 1, 'icon_btn': 3}
+TEXT_ARG = {'tr': 0, 'menu_text': 0, 'label': 1, 'btn': 1, 'icon_btn': 3, '_dialog': 0}
 NOT_TEXT = {'EconPulse', '↗', ''}
 
 

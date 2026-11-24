@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import logging
 
+from . import i18n
 from .core import Event, parse_feed
 from .providers import DEFAULT, FALLBACK, PROVIDERS, FeedResult, KeyRejected, ProviderError, RateLimited
 from .storage import data_dir, read_json, safe_write_json
@@ -64,9 +65,9 @@ def save_cache(result: FeedResult) -> None:
 
 def _describe(exc: Exception) -> str:
     if isinstance(exc, KeyRejected):
-        return 'API key rejected'
+        return i18n.tr('API key rejected')
     if isinstance(exc, RateLimited):
-        return 'asked to slow down'
+        return i18n.tr('asked to slow down')
     return str(exc) or exc.__class__.__name__
 
 
@@ -84,7 +85,7 @@ def fetch_events(
             provider=primary.id,
             has_actuals=primary.has_actuals,
             coverage='live',
-            warning='' if primary.has_actuals else 'Schedule only: this source has no Actual values.',
+            warning='' if primary.has_actuals else i18n.tr('Schedule only: this source has no Actual values.'),
         )
         save_cache(result)
         return result
@@ -95,11 +96,11 @@ def fetch_events(
     except Exception:
         # A parser bug or a truly malformed response must not skip the fallbacks below.
         log.exception('%s sent data EconPulse could not read', primary.name)
-        problem, retry_after = f'{primary.name}: unreadable response', None
+        problem, retry_after = f'{primary.name}: {i18n.tr("unreadable response")}', None
 
     cached = load_cache()
     if cached.events and cached.has_actuals and cached.at and now - cached.at < FRESH_ENOUGH:
-        cached.warning = f'{problem}. Showing saved data.'
+        cached.warning = f'{problem}. {i18n.tr("Showing saved data.")}'
         cached.failed, cached.retry_after = True, retry_after
         return cached
 
@@ -116,17 +117,17 @@ def fetch_events(
                 coverage='fallback',
                 failed=True,
                 retry_after=retry_after,
-                warning=f'{problem}. Showing the Forex Factory schedule (no Actual values).',
+                warning=f'{problem}. {i18n.tr("Showing the Forex Factory schedule (no Actual values).")}',
             )
         except ProviderError as exc:
             problem += f'; {fallback.name}: {_describe(exc)}'
             log.warning('fallback fetch failed (%s)', _describe(exc))
         except Exception:
-            problem += f'; {fallback.name}: unreadable response'
+            problem += f'; {fallback.name}: {i18n.tr("unreadable response")}'
             log.exception('%s sent data EconPulse could not read', fallback.name)
 
     if cached.events:
-        cached.warning = f'Offline. {problem}.'
+        cached.warning = f'{i18n.tr("Offline")}. {problem}.'
         cached.failed, cached.retry_after, cached.coverage = True, retry_after, 'stale cache'
         return cached
     error = ProviderError(problem)
