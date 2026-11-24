@@ -85,6 +85,18 @@ class ProjectTests(unittest.TestCase):
                     hashed = r'--require-hashes -r requirements[\w-]*\.lock'
                     self.assertRegex(line, hashed, f'{script.name}: {line.strip()}')
 
+    def test_release_notes_interpolate_version_and_repo(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import release_notes
+
+        body = release_notes.notes(__version__)
+        self.assertNotIn('<owner>', body)
+        self.assertNotIn('<version>', body)
+        self.assertIn(f'EconPulse-{__version__}-Windows.zip', body)
+        self.assertIn(REPO, body)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -9,6 +9,16 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 - **Encrypted API key on Windows (DPAPI)** and private `0700`/`0600` file permissions on POSIX, plus atomic writes (with Windows lock retries) for settings, caches, and trading notes.
 - **Sanitised `Event.uid` & `time_label`**, hardened ICS carriage-return escaping (with fuzz assertions), tightened CSV formula neutralisation against leading whitespace/newlines/pipes, blocked localhost/non-public targets in `safe_open()`. Provider ids with unusual characters are replaced by a hash, so two different ids can never merge into one release.
 
+### Fixed
+- Summary bar counts (`render_stats`) now respect `other_currencies` consistently with the calendar table.
+- Switching data sources while a refresh is in flight now supersedes and discards stale responses instead of dropping the switch.
+- A transient failure writing `fired.json` no longer suppresses alert notifications, and corrupted `fired.json` files no longer crash startup.
+- Right-to-left (Persian) widget resizing from the bottom-left corner now anchors the right edge and uses the matching diagonal cursor.
+- Multi-monitor tooltips, dropdowns, and saved widget positions now clamp to the active monitor (including monitors left of or above primary).
+- Preserved non-major currencies in `settings.json` when toggling filter chips or saving Preferences.
+- Fixed literal `<version>` and `<owner>` placeholders in `tools/release_notes.py`.
+- Pruning the stored alert history (above 4,000 entries) no longer deletes every entry for provider ids that contain `:` (all biquote ids), which could repeat alerts.
+
 ## [3.3.0] - 2026-11-20
 
 First open-source release.

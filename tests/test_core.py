@@ -130,6 +130,23 @@ class EconomicCalendarTests(unittest.TestCase):
         self.assertNotEqual(uid('a' * 130), uid('a' * 131))  # long ids are hashed, not truncated
         self.assertLessEqual(len(uid('a' * 500)), 120)
 
+    def test_pruning_old_alerts_keeps_current_ones(self):
+        # Keys are '<uid>:<stage>' and provider uids contain ':' themselves.
+        event = parse_feed(
+            [{'id': 'bq:1', 'title': 'CPI', 'country': 'USD', 'impact': 'High', 'date': self.now.isoformat()}]
+        )[0]
+        engine = AlertEngine([f'bq:old{i}:30' for i in range(4001)] + ['bq:1:30', 'bq:1:15', 'bq:1:5'])
+        engine.check([event], self.now)
+        self.assertIn('bq:1:5', engine.fired)
+        self.assertNotIn('bq:old0:30', engine.fired)
+        self.assertEqual(engine.check([event], self.now), [])  # nothing fires twice
+
+    def test_alert_engine_handles_corrupted_fired_data(self):
+        for bad in (123, {'a': 1}, 'oops', [1, None, 'ok:5', 'x' * 300]):
+            engine = AlertEngine(bad)
+            self.assertIsInstance(engine.fired, set)
+        self.assertEqual(AlertEngine(['ok:5', 99]).fired, {'ok:5'})
+
 
 if __name__ == '__main__':
     unittest.main()

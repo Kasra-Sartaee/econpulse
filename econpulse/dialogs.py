@@ -510,7 +510,8 @@ class DialogsMixin:
             for name, var in values.items():
                 self.cfg[name] = var.get()
             self.cfg['financecalendar_key'] = ''.join(key_var.get().split())[:128]
-            self.cfg['currencies'] = [c for c in CURRENCIES if c in selected]
+            extra_cur = sorted(c for c in selected if c not in CURRENCIES)
+            self.cfg['currencies'] = [c for c in CURRENCIES if c in selected] + extra_cur
             self.cfg['notify_minutes'] = [n for n in (30, 15, 5, 0) if n in stages]
             if 'startup' in values:
                 try:
@@ -535,7 +536,7 @@ class DialogsMixin:
             self.render()
             if source_changed:
                 self.failures, self.next_attempt, self.retry_until = 0, None, None
-                self.refresh(force=True)
+                self.refresh(force=True, supersede=True)
             if after[2] and not before[2]:
                 self.check_for_updates()
 

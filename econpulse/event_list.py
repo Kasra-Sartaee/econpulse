@@ -229,6 +229,15 @@ class EventCanvas(tk.Frame):
         self.cv.bind('<MouseWheel>', self.wheel)
         self.cv.bind('<Button-4>', lambda e: self.unixwheel(-1))
         self.cv.bind('<Button-5>', lambda e: self.unixwheel(1))
+        self.bind('<Destroy>', self._on_destroy)
+
+    def _on_destroy(self, e):
+        if e.widget is self and self._layout_job:
+            try:
+                self.after_cancel(self._layout_job)
+            except tk.TclError:
+                pass
+            self._layout_job = None
 
     # ------------------------------------------------------------------ api
     def set_period(self, period):

@@ -231,7 +231,10 @@ class AlertEngine:
     THRESHOLDS = (30, 15, 5, 0)
 
     def __init__(self, fired=None):
-        self.fired = set(fired or ())
+        if isinstance(fired, (list, set, tuple)):
+            self.fired = {k for k in fired if isinstance(k, str) and len(k) <= 160}
+        else:
+            self.fired = set()
 
     def check(self, events, now=None, *, currencies=None, enabled_stages=(30, 15, 5, 0)):
         now = now or datetime.now(UTC)
@@ -255,5 +258,6 @@ class AlertEngine:
         # Avoid unbounded growth of stored alert keys.
         if len(self.fired) > 4000:
             keep = {e.uid for e in events}
-            self.fired = {key for key in self.fired if key.split(':', 1)[0] in keep}
+            # Keys are '<uid>:<stage>' and uids may contain ':' (e.g. 'bq:123').
+            self.fired = {key for key in self.fired if key.rsplit(':', 1)[0] in keep}
         return found

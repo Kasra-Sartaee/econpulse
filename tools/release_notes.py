@@ -8,6 +8,9 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from econpulse import REPO
 
 
 def notes(version: str) -> str:
@@ -17,7 +20,7 @@ def notes(version: str) -> str:
         raise SystemExit(f'CHANGELOG.md has no section for {version}')
     return (
         match.group(1).strip() + '\n\nVerify the download: compare its SHA-256 with SHA256SUMS.txt, or run\n'
-        '`gh attestation verify EconPulse-<version>-Windows.zip --repo <owner>/econpulse`.\n'
+        f'`gh attestation verify EconPulse-{version}-Windows.zip --repo {REPO}`.\n'
     )
 
 

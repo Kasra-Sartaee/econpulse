@@ -60,6 +60,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.provider = self.cfg.get('provider', 'biquote')
         self.has_actuals = True
         self.inflight = False
+        self._fetch_id = 0
         self.last_attempt = None
         self.failures = 0
         self.next_attempt = None  # backoff after failures
@@ -327,7 +328,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         if self.demo:
             return tr('Demo'), p['amber'], tr('Sample data, not live')
         if self.at:
-            age = int((self.now() - self.at).total_seconds() / 60)
+            age = max(0, int((self.now() - self.at).total_seconds() / 60))
             stamp = self.at.astimezone(self.tz()).strftime('%H:%M')
             if i18n.rtl():
                 detail = f'همگام‌سازی {stamp}' + (f'  ·  {i18n.digits(age)} دقیقه پیش' if age >= 1 else '')
@@ -420,7 +421,10 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 enabled_stages=self.cfg.get('notify_minutes', [30, 15, 5, 0]),
             )
             if found:
-                safe_write_json(data_dir() / 'fired.json', sorted(self.alerts.fired))
+                try:
+                    safe_write_json(data_dir() / 'fired.json', sorted(self.alerts.fired))
+                except OSError:
+                    log.warning('could not persist fired alerts', exc_info=True)
                 grouped = defaultdict(list)
                 for e, stage in found:
                     grouped[(e.instant, stage)].append(e)
@@ -491,20 +495,22 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         interval = max(15, int(self.cfg.get('refresh_minutes', 15))) * 60
         return not self.last_attempt or (now - self.last_attempt).total_seconds() >= interval
 
-    def refresh(self, force=False):
-        if self.demo or self.inflight:
+    def refresh(self, force=False, supersede=False):
+        if self.demo or (self.inflight and not supersede):
             return
         now = self.now()
-        if self.retry_until and now < self.retry_until:
+        if not supersede and self.retry_until and now < self.retry_until:
             self.warning = self.tr('The data source asked us to wait before the next refresh')
             self.render_status()
             return
-        if not force and self.last_attempt and (now - self.last_attempt).total_seconds() < 120:
+        if not force and not supersede and self.last_attempt and (now - self.last_attempt).total_seconds() < 120:
             self.warning = self.tr('Refresh available again in 2 minutes')
             self.render_status()
             return
         self.last_attempt = now
         self.inflight = True
+        self._fetch_id += 1
+        gen = self._fetch_id
         self.warning = ''
         self.render_status()
         provider = self.cfg.get('provider', 'biquote')
@@ -512,12 +518,12 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
 
         def fetch():
             try:
-                self.io_queue.put(('ok', fetch_events(provider, key=key)))
+                self.io_queue.put(('ok', gen, fetch_events(provider, key=key)))
             except ProviderError as exc:
-                self.io_queue.put(('error', (str(exc), getattr(exc, 'retry_after', None))))
+                self.io_queue.put(('error', gen, (str(exc), getattr(exc, 'retry_after', None))))
             except Exception as exc:
                 log.exception('calendar fetch crashed')
-                self.io_queue.put(('error', (str(exc), None)))
+                self.io_queue.put(('error', gen, (str(exc), None)))
 
         threading.Thread(target=fetch, daemon=True, name='calendar-fetch').start()
 
@@ -544,9 +550,11 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 log.exception('tray action failed')
         while not self._closing:
             try:
-                status, payload = self.io_queue.get_nowait()
+                status, gen, payload = self.io_queue.get_nowait()
             except queue.Empty:
                 break
+            if gen != self._fetch_id:
+                continue  # superseded by a newer refresh (e.g. provider switch)
             self.inflight = False
             if status == 'ok':
                 self.events, self.at, self.source = payload.events, payload.at, payload.source

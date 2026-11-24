@@ -317,7 +317,8 @@ class CalendarWindowMixin:
             selected.remove(cur)
         else:
             selected.add(cur)
-        self.cfg['currencies'] = [c for c in CURRENCIES if c in selected]
+        extra = sorted(c for c in selected if c not in CURRENCIES)
+        self.cfg['currencies'] = [c for c in CURRENCIES if c in selected] + extra
         self._filters_changed()
 
     def toggle_impact(self, imp):
@@ -370,8 +371,8 @@ class CalendarWindowMixin:
         if not getattr(self, 'stat_widgets', None) or not self.stat_widgets[0][0].winfo_exists():
             return
         now = self.now()
-        selected = set(self.cfg.get('currencies') or [])
-        events = [e for e in self.events if not selected or e.currency in selected]
+        watched = self.watched_currencies()
+        events = [e for e in self.events if watched is None or e.currency in watched]
         big, small = self.stat_widgets[0]
         nxt = self._next_high
         big.config(text=nxt.countdown(now) if nxt else '—')

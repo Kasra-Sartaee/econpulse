@@ -11,8 +11,19 @@ from __future__ import annotations
 import tkinter as tk
 
 from . import i18n
-from .system import native_round
+from .system import all_workareas, native_round
 from .theme import IMPACT_LEVEL, SEV_COLOR, corner_images, dot_image, fitter, font, glyph, has_aa, px
+
+
+def _monitor_bounds(widget):
+    """Work area (l, t, r, b) of the monitor hosting ``widget``."""
+    cx = widget.winfo_rootx() + widget.winfo_width() // 2
+    cy = widget.winfo_rooty() + widget.winfo_height() // 2
+    areas = all_workareas(widget.winfo_toplevel())
+    for bounds in areas:
+        if bounds[0] <= cx < bounds[2] and bounds[1] <= cy < bounds[3]:
+            return bounds
+    return areas[0]
 
 
 def _tags(tags):
@@ -218,11 +229,15 @@ class Tooltip:
         lab = tk.Label(t, text=i18n.bidi(self.text), bg=p['raised'], fg=p['text'], font=font(9), padx=px(8), pady=px(4))
         lab.pack(padx=0 if rounded_ok else 1, pady=0 if rounded_ok else 1)
         t.update_idletasks()
-        x = self.widget.winfo_rootx() + (self.widget.winfo_width() - t.winfo_reqwidth()) // 2
+        ml, mt, mr, mb = _monitor_bounds(self.widget)
+        tw, th = t.winfo_reqwidth(), t.winfo_reqheight()
+        x = self.widget.winfo_rootx() + (self.widget.winfo_width() - tw) // 2
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + px(6)
-        if y + t.winfo_reqheight() > self.widget.winfo_screenheight():
-            y = self.widget.winfo_rooty() - t.winfo_reqheight() - px(6)
-        t.geometry(f'+{max(0, x)}+{y}')
+        if y + th > mb:
+            y = self.widget.winfo_rooty() - th - px(6)
+        x = max(ml, min(x, mr - tw))
+        y = max(mt, min(y, mb - th))
+        t.geometry(f'+{x}+{y}')
         self.tip = t
 
     def _hide(self, _e=None):
@@ -603,11 +618,13 @@ class FlatSelect(tk.Canvas):
         top.configure(bg=p['line_strong'])
         popup_w = max(self.winfo_width(), px(222))
         popup_h = min(len(self.options) * row + px(8), px(310))
-        rx = self.winfo_rootx()
+        ml, mt, mr, mb = _monitor_bounds(self)
+        rx = max(ml, min(self.winfo_rootx(), mr - popup_w))
         ry = self.winfo_rooty() + self.winfo_height() + px(4)
-        if ry + popup_h > top.winfo_screenheight() - px(15):
+        if ry + popup_h > mb - px(8):
             ry = self.winfo_rooty() - popup_h - px(4)
-        top.geometry(f'{popup_w}x{popup_h}+{rx}+{max(0, ry)}')
+        ry = max(mt, min(ry, mb - popup_h))
+        top.geometry(f'{popup_w}x{popup_h}+{rx}+{ry}')
         wrap = tk.Canvas(top, bg=p['card'], highlightthickness=0, borderwidth=0)
         wrap.pack(fill='both', expand=True, padx=0 if native else 1, pady=0 if native else 1)
         current = str(self.value.get())

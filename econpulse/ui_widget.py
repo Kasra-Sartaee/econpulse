@@ -70,17 +70,20 @@ class WidgetWindowMixin:
         l, t, r, b = self.workarea()
         sx, sy = self.cfg.get('widget_x'), self.cfg.get('widget_y')
         has_pos = isinstance(sx, int) and isinstance(sy, int)
-        if has_pos:
-            sx, sy = px(sx), px(sy)
-            for bounds in self.all_workareas():
-                if bounds[0] <= sx < bounds[2] and bounds[1] <= sy < bounds[3]:
-                    l, t, r, b = bounds
-                    break
         try:
             w = px(max(self.WIDGET_W[0], min(self.WIDGET_W[1], int(self.cfg.get('widget_w') or 452))))
             h = px(max(self.WIDGET_H[0], min(self.WIDGET_H[1], int(self.cfg.get('widget_h') or 615))))
         except (TypeError, ValueError):
             w, h = px(452), px(615)
+        if has_pos:
+            sx, sy = px(sx), px(sy)
+            best_area = 0
+            for bounds in self.all_workareas():
+                ox = max(0, min(sx + w, bounds[2]) - max(sx, bounds[0]))
+                oy = max(0, min(sy + h, bounds[3]) - max(sy, bounds[1]))
+                if ox * oy > best_area:
+                    best_area = ox * oy
+                    l, t, r, b = bounds
         w = min(w, max(px(self.WIDGET_W[0]), r - l - 10))
         h = min(h, max(px(self.WIDGET_H[0]), b - t - 10))
         x = max(l, min(sx, r - w)) if has_pos else r - w - px(18)
@@ -195,9 +198,10 @@ class WidgetWindowMixin:
             dot(grip, px(gx), px(gy), max(2, px(2)), p['faded'])
         if i18n.rtl():
             grip.place(relx=0, rely=1, x=px(4), y=-px(4), anchor='sw')
+            grip.config(cursor='size_ne_sw' if sys.platform == 'win32' else 'bottom_left_corner')
         else:
             grip.place(relx=1, rely=1, x=-px(4), y=-px(4), anchor='se')
-        grip.config(cursor='size_nw_se' if sys.platform == 'win32' else 'bottom_right_corner')
+            grip.config(cursor='size_nw_se' if sys.platform == 'win32' else 'bottom_right_corner')
         grip.bind('<ButtonPress-1>', self.resize_start)
         grip.bind('<B1-Motion>', self.resize_move)
         grip.bind('<ButtonRelease-1>', self.resize_end)
@@ -224,20 +228,34 @@ class WidgetWindowMixin:
 
     def resize_start(self, e):
         if self.widget:
-            self.resize_offset = (e.x_root, e.y_root, self.widget.winfo_width(), self.widget.winfo_height())
+            self.resize_offset = (
+                e.x_root,
+                e.y_root,
+                self.widget.winfo_width(),
+                self.widget.winfo_height(),
+                self.widget.winfo_x(),
+                self.widget.winfo_y(),
+            )
 
     def resize_move(self, e):
         if not self.widget or not self.resize_offset:
             return
-        sx, sy, sw, sh = self.resize_offset
-        width = max(px(self.WIDGET_W[0]), min(px(self.WIDGET_W[1]), sw + e.x_root - sx))
+        sx, sy, sw, sh, wx, wy = self.resize_offset
         height = max(px(self.WIDGET_H[0]), min(px(self.WIDGET_H[1]), sh + e.y_root - sy))
-        self.widget.geometry(f'{width}x{height}')
+        if i18n.rtl():
+            width = max(px(self.WIDGET_W[0]), min(px(self.WIDGET_W[1]), sw - (e.x_root - sx)))
+            self.widget.geometry(f'{width}x{height}+{wx + (sw - width)}+{wy}')
+        else:
+            width = max(px(self.WIDGET_W[0]), min(px(self.WIDGET_W[1]), sw + e.x_root - sx))
+            self.widget.geometry(f'{width}x{height}')
 
     def resize_end(self, _e):
         if self.widget:
             self.cfg['widget_w'] = unpx(self.widget.winfo_width())
             self.cfg['widget_h'] = unpx(self.widget.winfo_height())
+            if i18n.rtl():
+                self.cfg['widget_x'] = unpx(self.widget.winfo_x())
+                self.cfg['widget_y'] = unpx(self.widget.winfo_y())
             save_settings(self.cfg)
         self.resize_offset = None
 

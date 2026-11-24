@@ -291,6 +291,40 @@ class LiveAppTests(AppTestCase):
         self.assertFalse(self.app.inflight)
         self.assertIn('wait', self.app.warning)
 
+    def test_stale_fetch_result_is_discarded_after_supersede(self):
+        old_gen = self.app._fetch_id
+        self.app._fetch_id += 1
+        self.app.inflight = True
+        self.app.io_queue.put(('ok', old_gen, live_feed(999)))
+        self.app.poll()
+        self.assertTrue(self.app.inflight)
+        self.assertEqual(len(self.app.events), 2)
+
+    def test_render_stats_respects_other_currencies_setting(self):
+        from datetime import datetime, timedelta
+
+        from econpulse.core import parse_feed
+
+        now = datetime.now(UTC)
+        self.app.events = parse_feed(
+            [
+                {'title': 'US CPI', 'country': 'USD', 'impact': 'High', 'actual': '2%', 'date': now.isoformat()},
+                {
+                    'title': 'ZA CPI',
+                    'country': 'ZAR',
+                    'impact': 'High',
+                    'actual': '4%',
+                    'date': (now + timedelta(minutes=5)).isoformat(),
+                },
+            ]
+        )
+        self.app.cfg['other_currencies'] = False
+        self.app.render_stats()
+        self.assertEqual(self.app.stat_widgets[1][0].cget('text'), '1')
+        self.app.cfg['other_currencies'] = True
+        self.app.render_stats()
+        self.assertEqual(self.app.stat_widgets[1][0].cget('text'), '2')
+
     def test_high_impact_alert_fires_once(self):
         from econpulse.storage import data_dir
 
