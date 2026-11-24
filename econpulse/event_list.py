@@ -193,6 +193,7 @@ class EventCanvas(tk.Frame):
         self.rows: list[Row] = []
         self._tops: list[int] = []
         self._sections: list[int] = []
+        self._section_tops: list[int] = []
         self.content_height = 1
         self.drawn: dict[int, str] = {}  # row index -> canvas tag
         self.countdowns: dict[str, tuple] = {}  # uid -> (item, event, text, colour)
@@ -453,6 +454,7 @@ class EventCanvas(tk.Frame):
         self._layout_key = (today, marker.uid if marker else None)
         self._tops = [r.y for r in rows]
         self._sections = [i for i, r in enumerate(rows) if r.kind == 'section']
+        self._section_tops = [rows[i].y for i in self._sections]
         self.content_height = max(bottom, self.cv.winfo_height())
         fitter.trim()
 
@@ -467,7 +469,7 @@ class EventCanvas(tk.Frame):
         self._sticky_y = None
         width = self.view_width()
         if not self.events:
-            self.rows, self._tops, self._sections = [], [], []
+            self.rows, self._tops, self._sections, self._section_tops = [], [], [], []
             self._layout_key = ('empty',)
             self.content_height = max(px(220), cv.winfo_height())
             cv.configure(scrollregion=(0, 0, width, self.content_height))
@@ -826,14 +828,9 @@ class EventCanvas(tk.Frame):
             return
         top = cv.canvasy(0)
         h = px(self.section_height())
-        active = None
-        nxt = None
-        for i in self._sections:
-            if self.rows[i].y <= top:
-                active = i
-            else:
-                nxt = i
-                break
+        pos = bisect_right(self._section_tops, top) - 1
+        active = self._sections[pos] if pos >= 0 else None
+        nxt = self._sections[pos + 1] if 0 <= pos + 1 < len(self._sections) else None
         if active is None:
             if self._sticky_y is not None:
                 cv.delete('sticky')

@@ -111,6 +111,27 @@ class Event:
     source_day: str = ''  # source civil date for untimed events
     actual_tone: str = ''  # 'better' / 'worse' vs forecast, as marked by the provider
 
+    def to_record(self) -> dict:
+        """Canonical dict shape accepted by :func:`parse_feed`."""
+        return {
+            'id': self.uid,
+            'title': self.title,
+            'country': self.currency,
+            'date': self.instant.isoformat(),
+            'impact': self.impact,
+            'forecast': self.forecast,
+            'previous': self.previous,
+            'actual': self.actual,
+            'url': self.url,
+            'source': self.source,
+            'status': self.status,
+            'period': self.period,
+            'confidence': self.confidence,
+            'time_label': self.time_label,
+            'source_day': self.source_day,
+            'actual_tone': self.actual_tone,
+        }
+
     @property
     def is_untimed(self) -> bool:
         return self.is_holiday or bool(self.time_label)

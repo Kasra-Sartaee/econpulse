@@ -12,12 +12,32 @@ import ssl
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+import zlib
 
 from .. import USER_AGENT
 from ..core import Event
 
 MAX_BYTES = 4_500_000
 _SENSITIVE_HEADERS = {'x-api-key', 'authorization', 'cookie'}
+
+
+class NotModified(Exception):
+    """HTTP 304: conditional request matched the cached ETag / Last-Modified."""
+
+
+def _decompress_gzip(raw: bytes, limit: int = MAX_BYTES) -> bytes:
+    """Decompress gzip with a hard output cap (defends against zip bombs)."""
+    decomp = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        out = decomp.decompress(raw, limit + 1)
+        if len(out) > limit or decomp.unconsumed_tail:
+            raise ProviderError('response too large')
+        tail = decomp.flush(limit + 1 - len(out))
+        if len(out) + len(tail) > limit or not decomp.eof:
+            raise ProviderError('response too large')
+        return out + tail
+    except zlib.error:
+        raise ProviderError('invalid compressed response') from None
 
 
 def _is_public_host(hostname: str | None) -> bool:
@@ -111,9 +131,19 @@ def _retry_after(value) -> int | None:
         return None
 
 
-def http_get_json(url: str, *, params: dict | None = None, headers: dict | None = None, timeout: float = 17):
+def http_get_json(
+    url: str,
+    *,
+    params: dict | None = None,
+    headers: dict | None = None,
+    timeout: float = 17,
+    validators: dict[str, str] | None = None,
+):
     """GET a JSON document over HTTPS, identifying the app honestly.
 
+    Supports gzip decompression (with a hard size cap) and optional HTTP
+    conditional caching via ``validators`` (reads ``etag`` / ``last_modified``
+    and updates them in place; raises :class:`NotModified` on HTTP 304).
     Raises :class:`RateLimited`, :class:`KeyRejected` or :class:`ProviderError`.
     """
     if params:
@@ -121,12 +151,32 @@ def http_get_json(url: str, *, params: dict | None = None, headers: dict | None 
     parts = urlsplit(url)
     if parts.scheme != 'https' or not _is_public_host(parts.hostname):
         raise ProviderError('refusing a non-HTTPS request')
-    headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json', **(headers or {})}
-    request = Request(url, headers=headers)  # noqa: S310  # nosec B310 - https enforced above
+    req_headers = {
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        **(headers or {}),
+    }
+    if validators:
+        if validators.get('etag'):
+            req_headers['If-None-Match'] = validators['etag']
+        if validators.get('last_modified'):
+            req_headers['If-Modified-Since'] = validators['last_modified']
+    # HTTPS scheme and public host are enforced above.
+    request = Request(url, headers=req_headers)  # noqa: S310  # nosec B310
     try:
         with urlopen(request, timeout=timeout) as response:  # nosec B310
             raw = response.read(MAX_BYTES + 1)
+            resp_headers = getattr(response, 'headers', None) or {}
+            encoding = str(resp_headers.get('Content-Encoding') or '').lower()
+            if validators is not None:
+                if resp_headers.get('ETag'):
+                    validators['etag'] = str(resp_headers['ETag'])[:200]
+                if resp_headers.get('Last-Modified'):
+                    validators['last_modified'] = str(resp_headers['Last-Modified'])[:200]
     except HTTPError as exc:
+        if exc.code == 304:
+            raise NotModified() from None
         if exc.code in (429, 503):
             raise RateLimited(f'HTTP {exc.code}', _retry_after(exc.headers.get('Retry-After'))) from None
         if exc.code in (401, 403):
@@ -137,6 +187,8 @@ def http_get_json(url: str, *, params: dict | None = None, headers: dict | None 
         raise ProviderError(f'network error: {reason}') from None
     if len(raw) > MAX_BYTES:
         raise ProviderError('response too large')
+    if 'gzip' in encoding:
+        raw = _decompress_gzip(raw, MAX_BYTES)
     try:
         return json.loads(raw.decode('utf-8-sig'))
     except (UnicodeDecodeError, ValueError):

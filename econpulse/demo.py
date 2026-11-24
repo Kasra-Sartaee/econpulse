@@ -7,9 +7,9 @@ from datetime import UTC, datetime, timedelta
 from .core import parse_feed
 
 
-def demo_events():
+def demo_events(now: datetime | None = None):
     """Artificial records, only for --demo screenshot and testing."""
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     records = [
         (-180, 'USD', 'High', 'Non-Farm Employment Change', '165K', '142K', '188K', 'better'),
         (-65, 'EUR', 'Medium', 'Industrial Production m/m', '0.1%', '0.3%', '0.2%', 'worse'),

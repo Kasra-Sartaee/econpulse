@@ -25,24 +25,7 @@ FRESH_ENOUGH = timedelta(hours=3)
 
 
 def serialize(e: Event) -> dict:
-    return {
-        'id': e.uid,
-        'title': e.title,
-        'country': e.currency,
-        'date': e.instant.isoformat(),
-        'impact': e.impact,
-        'forecast': e.forecast,
-        'previous': e.previous,
-        'actual': e.actual,
-        'url': e.url,
-        'source': e.source,
-        'status': e.status,
-        'period': e.period,
-        'confidence': e.confidence,
-        'time_label': e.time_label,
-        'source_day': e.source_day,
-        'actual_tone': e.actual_tone,
-    }
+    return e.to_record()
 
 
 def load_cache() -> FeedResult:

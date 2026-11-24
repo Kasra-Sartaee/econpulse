@@ -12,26 +12,11 @@ from datetime import datetime, timedelta
 
 from ..core import Event, parse_feed
 from ..storage import data_dir, read_json, safe_write_json
-from .base import Provider, ProviderError, http_get_json
+from .base import NotModified, Provider, ProviderError, http_get_json
 
 EXPORT = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json'
 CACHE = 'ff-export-v4.json'
 MIN_INTERVAL = timedelta(minutes=62)
-
-
-def _serialize(e: Event) -> dict:
-    return {
-        'id': e.uid,
-        'title': e.title,
-        'country': e.currency,
-        'date': e.instant.isoformat(),
-        'impact': e.impact,
-        'forecast': e.forecast,
-        'previous': e.previous,
-        'source': e.source,
-        'time_label': e.time_label,
-        'source_day': e.source_day,
-    }
 
 
 class ForexFactoryExportProvider(Provider):
@@ -55,7 +40,32 @@ class ForexFactoryExportProvider(Provider):
                 return parse_feed(saved['events'])
             except (KeyError, TypeError, ValueError):
                 pass
-        body = http_get_json(EXPORT, timeout=timeout)
+        validators = {}
+        if saved.get('week') == week and saved.get('events'):
+            for name in ('etag', 'last_modified'):
+                if isinstance(saved.get(name), str) and saved[name]:
+                    validators[name] = saved[name]
+        try:
+            # Always pass the dict: an empty one sends no condition but still records
+            # this response's ETag / Last-Modified for the next request.
+            body = http_get_json(EXPORT, timeout=timeout, validators=validators)
+        except NotModified:
+            try:
+                events = parse_feed(saved['events'])
+            except (KeyError, TypeError, ValueError):
+                body = http_get_json(EXPORT, timeout=timeout)
+            else:
+                safe_write_json(
+                    data_dir() / CACHE,
+                    {
+                        'at': now.isoformat(),
+                        'week': week,
+                        'etag': validators.get('etag', ''),
+                        'last_modified': validators.get('last_modified', ''),
+                        'events': [e.to_record() for e in events],
+                    },
+                )
+                return events
         records = []
         for row in body if isinstance(body, list) else []:
             if isinstance(row, dict):
@@ -67,6 +77,13 @@ class ForexFactoryExportProvider(Provider):
         if not events:
             raise ProviderError('the weekly export is empty')
         safe_write_json(
-            data_dir() / CACHE, {'at': now.isoformat(), 'week': week, 'events': [_serialize(e) for e in events]}
+            data_dir() / CACHE,
+            {
+                'at': now.isoformat(),
+                'week': week,
+                'etag': validators.get('etag', ''),
+                'last_modified': validators.get('last_modified', ''),
+                'events': [e.to_record() for e in events],
+            },
         )
         return events

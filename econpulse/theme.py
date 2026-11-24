@@ -17,6 +17,7 @@ the same factor keeps text and boxes in proportion at any Windows scale.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import sys
 import tkinter as tk
 from tkinter import font as tkfont
@@ -286,8 +287,18 @@ def glyph(name: str, size: int = 11):
 # --------------------------------------------------------------------------
 # Anti-aliased shapes (Tk's canvas does not anti-alias polygons or ovals)
 # --------------------------------------------------------------------------
-_images: dict[tuple, object] = {}
+_images: OrderedDict[tuple, object] = OrderedDict()
+_IMAGE_CAP = 512
 _SS = 4  # supersampling factor
+
+
+def _cache_image(key, value):
+    _images[key] = value
+    _images.move_to_end(key)
+    while len(_images) > _IMAGE_CAP:
+        _images.popitem(last=False)
+    return value
+
 
 try:  # Pillow ships with the app (tray icon); degrade gracefully without it.
     from PIL import Image, ImageDraw, ImageTk
@@ -329,8 +340,7 @@ def corner_images(r: int, fill: str, outline: str = '', width: int = 1):
         ImageTk.PhotoImage(img.crop(box))
         for box in ((0, 0, r, r), (r, 0, 2 * r, r), (0, r, r, 2 * r), (r, r, 2 * r, 2 * r))
     )
-    _images[key] = parts
-    return parts
+    return _cache_image(key, parts)
 
 
 def dot_image(diameter: int, fill: str):
@@ -341,7 +351,7 @@ def dot_image(diameter: int, fill: str):
         size = diameter * _SS
         img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         ImageDraw.Draw(img).ellipse((0, 0, size - 1, size - 1), fill=(*_rgb(fill), 255))
-        cached = _images[key] = ImageTk.PhotoImage(img.resize((diameter, diameter), Image.LANCZOS))
+        cached = _cache_image(key, ImageTk.PhotoImage(img.resize((diameter, diameter), Image.LANCZOS)))
     return cached
 
 
@@ -351,7 +361,7 @@ def brand_image(size: int, p: dict):
     key = ('brand', size, p['primary'], p['primary_fg'], p['red'])
     cached = _images.get(key)
     if cached is None:
-        cached = _images[key] = ImageTk.PhotoImage(render_brand(size, p['primary'], p['primary_fg'], p['red']))
+        cached = _cache_image(key, ImageTk.PhotoImage(render_brand(size, p['primary'], p['primary_fg'], p['red'])))
     return cached
 
 
@@ -385,21 +395,24 @@ class TextFitter:
     """
 
     def __init__(self):
-        self._width: dict[tuple[str, str], int] = {}
-        self._fit: dict[tuple[str, str, int], str] = {}
-        self._wrap: dict[tuple[str, str, int], list[str]] = {}
+        self._width: OrderedDict[tuple[str, str], int] = OrderedDict()
+        self._fit: OrderedDict[tuple[str, str, int], str] = OrderedDict()
+        self._wrap: OrderedDict[tuple[str, str, int], list[str]] = OrderedDict()
 
     def measure(self, ft: tkfont.Font, text: str) -> int:
         key = (str(ft), text)
         value = self._width.get(key)
         if value is None:
             value = self._width[key] = ft.measure(text)
+        else:
+            self._width.move_to_end(key)
         return value
 
     def fit(self, ft: tkfont.Font, text: str, width: int) -> str:
         key = (str(ft), text, width)
         value = self._fit.get(key)
         if value is not None:
+            self._fit.move_to_end(key)
             return value
         if self.measure(ft, text) <= width:
             value = text
@@ -419,6 +432,7 @@ class TextFitter:
         key = (str(ft), text, width)
         value = self._wrap.get(key)
         if value is not None:
+            self._wrap.move_to_end(key)
             return value
         if self.measure(ft, text) <= width:
             value = [text]
@@ -443,10 +457,10 @@ class TextFitter:
         self._wrap.clear()
 
     def trim(self):
-        """Bound memory: widths change on resize, so stale keys accumulate."""
-        for cache, limit in ((self._width, 20000), (self._fit, 6000), (self._wrap, 6000)):
-            if len(cache) > limit:
-                cache.clear()
+        """Evict least-recently-used entries instead of flushing the entire cache."""
+        for cache, limit in ((self._width, 16000), (self._fit, 4000), (self._wrap, 4000)):
+            while len(cache) > limit:
+                cache.popitem(last=False)
 
 
 fitter = TextFitter()

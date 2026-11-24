@@ -93,6 +93,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.widget_period = 'day'  # always start in Today; Week is a session choice
         self.last_view = 'full' if args.full else 'widget' if args.widget else self.cfg.get('mode', 'widget')
         self._closing = False
+        self._dirty = False
         self.widget_refocus = True
 
         theme.init_scale(root)
@@ -410,8 +411,16 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             local = now.astimezone(self.tz())
             self.clock_label.config(text=f'{i18n.date_text(local.date(), "long")}  ·  {local:%H:%M:%S}')
         minute = now.strftime('%Y%m%d%H%M')
+        widget_visible = bool(self.widget and self.widget.winfo_exists())
         if self.last_render_min != minute:
             self.last_render_min = minute
+            if full_visible or widget_visible:
+                self._dirty = False
+                self.render()
+            else:
+                self._dirty = True
+        elif self._dirty and (full_visible or widget_visible):
+            self._dirty = False
             self.render()
         if not self.demo and self.cfg.get('notifications', True):
             found = self.alerts.check(
@@ -574,7 +583,8 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 log.exception('render after refresh failed')
         if not self._closing:
             try:
-                self.root.after(250, self.poll)
+                delay = 80 if self.inflight else (400 if self.tray else 1000)
+                self.root.after(delay, self.poll)
             except tk.TclError:
                 pass
 

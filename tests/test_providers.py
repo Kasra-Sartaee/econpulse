@@ -193,13 +193,13 @@ class BiquoteTests(unittest.TestCase):
 
         def fake(url, params=None, **kw):
             calls.append(params)
-            return BIQUOTE_ROWS if not calls[:-1] else []
+            return BIQUOTE_ROWS if params['from'] == '2026-11-01' else []
 
         with mock.patch.object(biquote, 'http_get_json', side_effect=fake):
             events = PROVIDERS['biquote'].fetch(NOW)
         self.assertEqual(len(events), 5)
-        self.assertEqual(calls[0]['from'], '2026-11-01')
-        self.assertEqual(calls[-1]['to'], '2026-11-21')
+        self.assertEqual(min(c['from'] for c in calls), '2026-11-01')
+        self.assertEqual(max(c['to'] for c in calls), '2026-11-21')
         self.assertLessEqual(len(calls), 3)
 
     def test_full_page_is_split(self):
@@ -208,14 +208,36 @@ class BiquoteTests(unittest.TestCase):
 
         def fake(url, params=None, **kw):
             calls.append(params)
-            return full if len(calls) == 1 else BIQUOTE_ROWS
+            if params['from'] == '2026-11-01' and params['to'] == '2026-11-07':
+                return full
+            return BIQUOTE_ROWS
 
         with mock.patch.object(biquote, 'http_get_json', side_effect=fake):
             events = PROVIDERS['biquote'].fetch(NOW)
         self.assertEqual(len(events), len(BIQUOTE_ROWS))  # the full page was discarded and re-requested
-        first_split = calls[1:3]
-        self.assertEqual(first_split[0]['from'], calls[0]['from'])
-        self.assertEqual(first_split[1]['to'], calls[0]['to'])
+        split_calls = [
+            c
+            for c in calls
+            if ('2026-11-01' <= c['from'] <= '2026-11-07' and c['to'] != '2026-11-07')
+            or (c['from'] != '2026-11-01' and c['to'] == '2026-11-07')
+        ]
+        self.assertGreaterEqual(len(split_calls), 2)
+
+    def test_dense_weeks_never_drop_days_when_the_split_budget_runs_out(self):
+        # Every span is over-full: the provider splits within its budget, then keeps capped pages.
+        calls = []
+
+        def fake(url, params=None, **kw):
+            calls.append(params)
+            day = params['from']
+            return [dict(BIQUOTE_ROWS[0], id=f'{day}-{i}', time=f'{day}T13:30:00Z') for i in range(biquote.PAGE_LIMIT)]
+
+        with mock.patch.object(biquote, 'http_get_json', side_effect=fake):
+            events = PROVIDERS['biquote'].fetch(NOW)
+        self.assertLessEqual(len(calls), 3 + biquote.BiquoteProvider.MAX_EXTRA_REQUESTS)
+        days = {e.instant.date().isoformat() for e in events}
+        for c in calls:
+            self.assertIn(c['from'], days)  # nothing fetched was thrown away
 
 
 class FinanceCalendarTests(unittest.TestCase):
@@ -277,6 +299,39 @@ class HttpClientTests(unittest.TestCase):
         self.assertEqual(same.get_header('X-api-key'), 'secret')
         with self.assertRaises(ProviderError):
             base.http_get_json('https://127.0.0.1/local')
+
+    def test_gzip_decompression_zip_bomb_cap_and_304(self):
+        import gzip
+
+        payload = gzip.compress(b'[{"ok": 1}]')
+
+        class Resp:
+            headers = {'Content-Encoding': 'gzip', 'ETag': '"v1"'}
+
+            def read(self, n=-1):
+                return payload[:n] if n >= 0 else payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        validators = {}
+        with mock.patch.object(base, 'urlopen', return_value=Resp()):
+            data = base.http_get_json('https://example.org/x', validators=validators)
+        self.assertEqual(data, [{'ok': 1}])
+        self.assertEqual(validators['etag'], '"v1"')
+        # Zip-bomb cap: decompressing beyond limit must fail cleanly
+        bomb = gzip.compress(b'A' * 4096)
+        with self.assertRaises(ProviderError):
+            base._decompress_gzip(bomb, limit=1024)
+        # HTTP 304 raises NotModified
+        with (
+            mock.patch.object(base, 'urlopen', side_effect=self._http_error(304)),
+            self.assertRaises(base.NotModified),
+        ):
+            base.http_get_json('https://example.org/x', validators=validators)
 
 
 class PipelineTests(unittest.TestCase):
@@ -349,6 +404,27 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(get.call_count, 1)
             provider.fetch(NOW + timedelta(minutes=70))
             self.assertEqual(get.call_count, 2)
+
+    def test_export_remembers_its_etag_from_the_first_download(self):
+        import json
+
+        from econpulse.providers import ff_export
+        from econpulse.storage import data_dir
+
+        body = [{'title': 'Sample', 'country': 'USD', 'date': NOW.isoformat(), 'impact': 'High'}]
+        seen = []
+
+        def fake(url, *, timeout, validators):
+            seen.append(dict(validators))
+            validators['etag'] = '"week-46"'
+            return body
+
+        with mock.patch.object(ff_export, 'http_get_json', side_effect=fake):
+            PROVIDERS['ff_export'].fetch(NOW)
+            saved = json.loads((data_dir() / ff_export.CACHE).read_text(encoding='utf-8'))
+            self.assertEqual(saved['etag'], '"week-46"')
+            PROVIDERS['ff_export'].fetch(NOW + timedelta(minutes=70))
+        self.assertEqual(seen, [{}, {'etag': '"week-46"'}])  # the second download is conditional
 
 
 if __name__ == '__main__':

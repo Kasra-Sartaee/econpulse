@@ -4,6 +4,10 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Changed
+- **Faster, lighter networking & idle loop**: gzip responses with a hard zip-bomb cap, conditional `ETag` / `If-Modified-Since` (`304 Not Modified`) support, concurrent weekly fetches for biquote, adaptive idle polling, skipping offscreen per-minute renders when hidden in the tray, binary-search sticky headers, and bounded LRU text/image caches.
+- **Trimmed Windows PyInstaller bundle** by excluding unused stdlib modules.
+
 ### Security
 - **Hardened HTTP redirects**: refuse non-HTTPS or non-public/localhost redirect targets, enforce TLS 1.2+, and strip `X-API-Key` / `Authorization` / `Cookie` headers on cross-origin redirects.
 - **Encrypted API key on Windows (DPAPI)** and private `0700`/`0600` file permissions on POSIX, plus atomic writes (with Windows lock retries) for settings, caches, and trading notes.
