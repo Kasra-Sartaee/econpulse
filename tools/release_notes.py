@@ -1,6 +1,6 @@
 """Print one version's section of CHANGELOG.md (used for GitHub release notes).
 
-python tools/release_notes.py 3.3.0
+python tools/release_notes.py 3.4.0
 """
 
 from pathlib import Path

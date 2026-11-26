@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from econpulse.core import _CURRENCY, parse_feed
+from econpulse.core import _CURRENCY, parse_feed, surprise
 from econpulse.exports import _PLAIN_NUMBER, csv_cell, fold, ics_text
 from econpulse.feed import serialize
 from econpulse.providers import biquote, financecalendar
@@ -153,6 +153,7 @@ def check_events(records) -> None:
             e.display_day(tz)
             e.when_text(tz)
         e.countdown(NOW)
+        assert len(surprise(e.actual, e.forecast)) <= 60
         for cell in (e.title, e.actual, e.forecast, e.previous):
             safe = csv_cell(cell)
             assert safe[:1] not in ('=', '+', '@', '|', '\t', '\r', '\n') or _PLAIN_NUMBER.fullmatch(safe), repr(safe)

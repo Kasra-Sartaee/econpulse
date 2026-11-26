@@ -1,0 +1,6 @@
+# Pinned, hash-checked tools for building the PyPI package (.github/workflows/publish.yml).
+# Regenerate with:
+#   uv pip compile --universal --python-version 3.11 --generate-hashes requirements-publish.in -o requirements-publish.lock
+build
+setuptools>=69
+wheel

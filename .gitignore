@@ -7,6 +7,10 @@ venv/
 .build-venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.hypothesis/
+mutants/
+/visual/
 
 # Build output
 build/

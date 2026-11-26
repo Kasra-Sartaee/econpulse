@@ -11,12 +11,16 @@ from datetime import UTC, datetime, time, timedelta
 import logging
 from pathlib import Path
 import queue
+import shutil
+
+# Only to start a verified update installer (fixed arguments, no shell).
+import subprocess  # nosec B404
 import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox
 
-from . import REPO_URL, __version__, i18n, state, system, theme, updates
+from . import REPO_URL, __version__, history, i18n, state, system, theme, updates
 from .controls import (
     FlatButton,
     IconButton,
@@ -28,6 +32,7 @@ from .demo import demo_events
 from .dialogs import DialogsMixin
 from .feed import fetch_events, load_cache
 from .providers import FALLBACK, PROVIDERS, ProviderError
+from .refresh import RefreshPolicy
 from .storage import data_dir, load_settings, read_json, safe_write_json, save_settings
 from .system import native_round
 from .theme import fitter, font, num, px
@@ -35,7 +40,6 @@ from .ui_calendar import CalendarWindowMixin
 from .ui_widget import WidgetWindowMixin
 
 log = logging.getLogger('econpulse')
-BACKOFF_MINUTES = (30, 60, 120)  # after 1, 2, 3+ failed refreshes in a row
 
 
 def asset(name: str) -> Path:
@@ -50,7 +54,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.cfg = load_settings()
         i18n.set_language(self.cfg.get('language', 'en'))
         i18n.install_rtl_geometry()
-        self.p = theme.palette(self.cfg['theme'])
+        self.p = theme.palette(self.theme_name())
         self.events = []
         self.at = None
         self.source = '—'
@@ -59,16 +63,12 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.coverage = 'unverified'
         self.provider = self.cfg.get('provider', 'biquote')
         self.has_actuals = True
-        self.inflight = False
-        self._fetch_id = 0
-        self.last_attempt = None
-        self.failures = 0
-        self.next_attempt = None  # backoff after failures
-        self.retry_until = None  # a source asked us to wait (HTTP 429/503 Retry-After)
+        self.policy = RefreshPolicy()  # when to fetch: interval, backoff, Retry-After, supersede
         self.update_info = None  # (version, url) when a newer release exists
         self.io_queue = queue.Queue()
         self.ui_queue = queue.Queue()
         self.alerts = AlertEngine(read_json(data_dir() / 'fired.json', []))
+        shutil.rmtree(data_dir() / 'updates', ignore_errors=True)  # an installer from a past update
         self.tab = 'all'
         self.search_var = tk.StringVar()
         self._search_traces = []
@@ -78,6 +78,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.widget_list = None
         self.widget_hero = None
         self.compact_bar = None
+        self.appbar = None  # the docked compact bar's reserved screen strip (Windows)
         self.setting_window = None
         self.detail_window = None
         self.last_render_min = None
@@ -89,7 +90,6 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self._next_high = None
         self._focus_main = False
         self._full_frames = []
-        self._burst_fired = set()
         self.toasts = []
         self.demo = args.demo
         self.widget_period = 'day'  # always start in Today; Week is a session choice
@@ -98,6 +98,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self._dirty = False
         self.widget_refocus = True
 
+        theme.set_text_size(self.cfg.get('text_size', 100))
         theme.init_scale(root)
         root.report_callback_exception = self.report_exception
         self.size_root()
@@ -131,6 +132,8 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             self._remember_update(self.cfg.get('latest_version', ''))
         self.build_full()
         self.init_tray()
+        self.hotkey = None
+        self.apply_global_hotkey()
         if args.widget or (not args.full and self.cfg.get('mode') == 'widget'):
             self.show_widget()
         if not args.demo:
@@ -262,6 +265,10 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         for key in self.SCROLL_KEYS:
             window.bind(f'<{key}>', lambda e, k=key: scroll(e, k))
 
+    def theme_name(self):
+        """The chosen theme, or high contrast whenever Windows' High Contrast mode is on."""
+        return 'contrast' if system.high_contrast_active() else self.cfg.get('theme', 'dark')
+
     @staticmethod
     def _unless_typing(action):
         def handler(event):
@@ -293,7 +300,8 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         self.render_widget()
         return key in current
 
-    def next_high(self):
+    def upcoming_high(self, limit=1):
+        """The next ``limit`` high-impact releases in the watched currencies, soonest first."""
         now = self.now()
         watched = self.watched_currencies()
         upcoming = [
@@ -304,7 +312,11 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             and e.instant > now
             and (watched is None or e.currency in watched)
         ]
-        return min(upcoming, key=lambda e: e.instant) if upcoming else None
+        return sorted(upcoming, key=lambda e: e.instant)[:limit]
+
+    def next_high(self):
+        upcoming = self.upcoming_high(1)
+        return upcoming[0] if upcoming else None
 
     def visible(self, view=None, widget=False):
         tz = self.tz()
@@ -382,7 +394,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             age = max(0, int((self.now() - self.at).total_seconds() / 60))
             stamp = self.at.astimezone(self.tz()).strftime('%H:%M')
             detail = i18n.sync_detail(stamp, age)
-            if self.inflight:
+            if self.policy.inflight:
                 detail = tr('Syncing…')
             live = self.state == 'live'
             if live and not self.has_actuals:
@@ -390,9 +402,9 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             colour = p['green'] if live and age <= 45 else p['amber']
             return tr('Live' if live else 'Cached'), colour, detail
         return (
-            tr('Connecting' if self.inflight else 'Offline'),
-            (p['amber'] if self.inflight else p['red']),
-            tr('Fetching calendar…' if self.inflight else 'No calendar data yet'),
+            tr('Connecting' if self.policy.inflight else 'Offline'),
+            (p['amber'] if self.policy.inflight else p['red']),
+            tr('Fetching calendar…' if self.policy.inflight else 'No calendar data yet'),
         )
 
     def render_status(self):
@@ -405,17 +417,17 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             age = max(int((self.now() - self.at).total_seconds() / 60), 0)
             stamp = f'{self.at.astimezone(self.tz()):%H:%M}'
             msg = i18n.sync_status(self.source, stamp, age)
-            if self.inflight:
+            if self.policy.inflight:
                 msg += '  ·  ' + self.tr('Syncing…')
             if self.warning:
                 msg += '  ·  ' + self.tr(self.warning)[:140]
-            retry = self.retry_until or self.next_attempt
-            if retry and not self.inflight and retry > self.now():
+            retry = self.policy.retry_until or self.policy.next_attempt
+            if retry and not self.policy.inflight and retry > self.now():
                 msg += '  ·  ' + self.tr('Next try') + f' {retry.astimezone(self.tz()):%H:%M}'
             if age > 45:
                 msg += '  ·  ' + self.tr('data may be stale')
         else:
-            msg = detail + ('  ·  ' + self.warning[:95] if self.warning and not self.inflight else '')
+            msg = detail + ('  ·  ' + self.warning[:95] if self.warning and not self.policy.inflight else '')
         self.status.config(text=msg, fg=self.p['amber'] if self.warning or self.demo else self.p['faded'])
         self.render_attribution()
         self.rail_source.set(colour, state)
@@ -453,6 +465,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
             self.widget_hero.tick(now)
         if self.compact_bar is not None and self.compact_bar.winfo_exists():
             self.compact_bar.tick(now)
+            self.keep_docked_bar_out_of_full_screen()
         if getattr(self, 'stat_widgets', None):
             nxt = self._next_high
             if nxt and nxt.instant <= now:
@@ -500,20 +513,15 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         if (
             not self.demo
             and self.cfg.get('burst_poll', False)
-            and self.has_actuals  # a schedule-only source has nothing to wait for
-            and not self.inflight
-            and not self.failures  # never add requests while the source is failing or backing off
-            and (not self.retry_until or now >= self.retry_until)
-        ):
-            token = state.due_burst_poll(
+            and self.policy.burst_due(
                 self.events,
                 now,
+                has_actuals=self.has_actuals,
                 watched=self.watched_currencies(),
                 starred=self.starred_keys(),
-                fired_bursts=self._burst_fired,
             )
-            if token:
-                self.refresh(force=True)
+        ):
+            self.refresh(force=True)
 
     def notify(self, title, detail, *, event=None, accent='red'):
         if self.tray:
@@ -570,37 +578,27 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         """Polite polling: every refresh interval (at least 15 min), backing off
         after failures and honouring a source's Retry-After."""
         try:
-            if not self.demo and not self.inflight and self.refresh_due():
+            if not self.demo and self.policy.due(self.now(), self.cfg.get('refresh_minutes', 15)):
                 self.refresh(True)
         finally:
             if not self._closing:
                 self._refresh_timer = self.root.after(60_000, self.auto_refresh)
 
-    def refresh_due(self, now=None):
-        now = now or self.now()
-        if self.retry_until and now < self.retry_until:
-            return False
-        if self.next_attempt:
-            return now >= self.next_attempt
-        interval = max(15, int(self.cfg.get('refresh_minutes', 15))) * 60
-        return not self.last_attempt or (now - self.last_attempt).total_seconds() >= interval
-
     def refresh(self, force=False, supersede=False):
-        if self.demo or (self.inflight and not supersede):
+        if self.demo:
             return
         now = self.now()
-        if not supersede and self.retry_until and now < self.retry_until:
-            self.warning = self.tr('The data source asked us to wait before the next refresh')
+        reason = self.policy.refusal(now, force=force, supersede=supersede)
+        if reason == 'busy':
+            return
+        if reason:
+            if reason == 'wait':
+                self.warning = self.tr('The data source asked us to wait before the next refresh')
+            else:
+                self.warning = self.tr('Refresh available again in 2 minutes')
             self.render_status()
             return
-        if not force and not supersede and self.last_attempt and (now - self.last_attempt).total_seconds() < 120:
-            self.warning = self.tr('Refresh available again in 2 minutes')
-            self.render_status()
-            return
-        self.last_attempt = now
-        self.inflight = True
-        self._fetch_id += 1
-        gen = self._fetch_id
+        gen = self.policy.start(now)
         self.warning = ''
         self.render_status()
         provider = self.cfg.get('provider', 'biquote')
@@ -608,7 +606,13 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
 
         def fetch():
             try:
-                self.io_queue.put(('ok', gen, fetch_events(provider, key=key)))
+                result = fetch_events(provider, key=key)
+                if not result.is_cache and result.has_actuals and result.at:
+                    try:
+                        history.record(result.events, result.at)  # on this thread: never blocks the UI
+                    except OSError:
+                        log.warning('could not update the release history', exc_info=True)
+                self.io_queue.put(('ok', gen, result))
             except ProviderError as exc:
                 self.io_queue.put(('error', gen, (str(exc), getattr(exc, 'retry_after', None))))
             except Exception as exc:
@@ -616,17 +620,6 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 self.io_queue.put(('error', gen, (str(exc), None)))
 
         threading.Thread(target=fetch, daemon=True, name='calendar-fetch').start()
-
-    def _after_fetch(self, failed, retry_after=None):
-        """Schedule the next automatic attempt (exponential backoff on failure)."""
-        now = self.now()
-        self.retry_until = now + timedelta(seconds=retry_after) if retry_after else None
-        if not failed:
-            self.failures, self.next_attempt = 0, None
-            return
-        self.failures += 1
-        minutes = BACKOFF_MINUTES[min(self.failures, len(BACKOFF_MINUTES)) - 1]
-        self.next_attempt = now + timedelta(minutes=minutes)
 
     def poll(self):
         while not self._closing:
@@ -643,9 +636,8 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 status, gen, payload = self.io_queue.get_nowait()
             except queue.Empty:
                 break
-            if gen != self._fetch_id:
+            if not self.policy.accept(gen):
                 continue  # superseded by a newer refresh (e.g. provider switch)
-            self.inflight = False
             if status == 'ok':
                 prev_events = self.events
                 self.events, self.at, self.source = payload.events, payload.at, payload.source
@@ -653,7 +645,7 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 self.widget_refocus = True
                 self.warning = payload.warning
                 self.state = 'cached' if payload.is_cache else 'live'
-                self._after_fetch(payload.failed, payload.retry_after)
+                self.policy.finished(self.now(), failed=payload.failed, retry_after=payload.retry_after)
                 if not self.demo and self.cfg.get('notifications', True) and self.cfg.get('alert_actual', True):
                     published = state.detect_published_actuals(
                         prev_events,
@@ -678,14 +670,14 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 message, retry_after = payload
                 self.warning = message
                 self.state = 'cached' if self.events else 'offline'
-                self._after_fetch(True, retry_after)
+                self.policy.finished(self.now(), failed=True, retry_after=retry_after)
             try:
                 self.render()
             except Exception:
                 log.exception('render after refresh failed')
         if not self._closing:
             try:
-                delay = 80 if self.inflight else (400 if self.tray else 1000)
+                delay = 80 if self.policy.inflight else (400 if self.tray else 1000)
                 self.root.after(delay, self.poll)
             except tk.TclError:
                 pass
@@ -821,7 +813,45 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 pass
 
     def open_update(self):
-        system.safe_open(updates.RELEASES_URL)
+        """'New version available' (status line or tray): install it, or show the releases page.
+
+        Only a copy installed with the Setup.exe updates itself; a portable copy (the zip)
+        gets the releases page, since replacing its files in place could break it.
+        """
+        version = self.update_info[0] if self.update_info else None
+        if not version or not updates.installed_copy():
+            system.safe_open(updates.RELEASES_URL)
+            return
+        question = self.tr('Download and install EconPulse {version}? It restarts by itself afterwards.')
+        if messagebox.askyesno(self.tr('Update EconPulse'), question.format(version=version), parent=self.root):
+            self.install_update(version)
+
+    def install_update(self, version):
+        self.warning = self.tr('Downloading the update…')
+        self.render_status()
+
+        def work():
+            try:
+                path = updates.download_installer(version, data_dir() / 'updates')
+            except updates.UpdateError as exc:
+                log.warning('update not installed: %s', exc)
+                reason = str(exc)
+                self.ui_queue.put(lambda: self._update_failed(reason))
+                return
+            self.ui_queue.put(lambda: self._run_installer(path))
+
+        threading.Thread(target=work, daemon=True, name='update-download').start()
+
+    def _update_failed(self, reason):
+        self.warning = ''
+        self.render_status()
+        message = f'{self.tr("The update could not be installed, and nothing was changed:")}\n{reason}'
+        messagebox.showerror(self.tr('Update EconPulse'), message, parent=self.root)
+
+    def _run_installer(self, path):
+        # Verified above (checksum and build attestation); a fixed argument list, no shell.
+        subprocess.Popen([str(path), '/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])  # noqa: S603  # nosec B603
+        self.quit()  # the installer replaces the files and starts the new version
 
     def provider_info(self):
         """(attribution text, homepage) for the data shown right now."""
@@ -836,6 +866,27 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
         else:
             self.quit()
 
+    def apply_global_hotkey(self):
+        """Register or drop Ctrl+Alt+E to match the setting; False if Windows refused it."""
+        wanted = bool(self.cfg.get('global_hotkey')) and system.GlobalHotkey.supported() and not self.demo
+        if self.hotkey is not None and not wanted:
+            self.hotkey.stop()
+            self.hotkey = None
+        if wanted and self.hotkey is None:
+            hotkey = system.GlobalHotkey('E', lambda: self.ui_queue.put(self.summon_widget))
+            if not hotkey.start():
+                log.warning('Ctrl+Alt+E is already used by another program')
+                return False
+            self.hotkey = hotkey
+        return True
+
+    def summon_widget(self):
+        """The global shortcut: bring the widget to the front, wherever the user is."""
+        self.show_widget()
+        if self.widget and self.widget.winfo_exists():
+            self.widget.lift()
+            self.widget.focus_force()
+
     def quit(self):
         self._closing = True
         try:
@@ -843,6 +894,9 @@ class EconPulse(CalendarWindowMixin, WidgetWindowMixin, DialogsMixin):
                 self.tray.stop()
         except Exception:
             pass
+        if getattr(self, 'hotkey', None) is not None:
+            self.hotkey.stop()
+        self.undock_compact_bar()
         try:
             # Cancel pending timers first: firing into destroyed widgets logs
             # "invalid command name" errors on every exit. Cancel at the Tcl

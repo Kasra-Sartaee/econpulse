@@ -4,6 +4,8 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-11-25
+
 ### Added
 - **Compact ticker-bar widget mode**: toggleable single-line floating bar (`Ctrl+M`, widget header button, or tray menu) showing the next high-impact release, forecast, and live countdown, plus magnetic edge-snapping and a quick Always-on-Top pin toggle.
 - **Starred watchlist & per-event release notes**: star any indicator in Release Details to highlight it in lists and receive alerts even for medium/low-impact releases, and attach private notes (`event-notes.json`) that persist across recurring releases.
@@ -13,12 +15,24 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 - **Expanded trading time zones** (18 global financial centres) and **Preferences controls** for widget opacity, refresh interval, compact bar, Actual alerts, burst polling, and an opt-in live `next.json` status file for OBS / Stream Deck / scripts.
 - **Keyboard accessibility & shortcuts**: `Tab` focus rings and `Space`/`Enter` activation on custom canvas controls, plus `Ctrl+1..5` (views), `Ctrl+,` (Preferences), `Ctrl+E` (Export), `Ctrl+N` (Notes), `Ctrl+W` (Widget), and `Ctrl+M` (Compact bar).
 - **Windows Focus Assist / Fullscreen awareness**: alert sounds respect Windows Do-Not-Disturb / presentation / fullscreen state (`SHQueryUserNotificationState`).
+- **High-contrast theme and larger text**: a black-and-white theme with every text colour at 7:1 contrast or better (WCAG AAA), used automatically while a Windows contrast theme is on, and text at 100, 115 or 130 % with the layout scaling along.
+- **Actual vs forecast**: Release Details show how far the Actual landed from the forecast, such as `+23K` or `-0.1 pp`. Deliberately neutral, because whether higher is good depends on the indicator.
+- **Indicator history**: Release Details list the indicator's recent releases with their forecasts and the gap, from a local record (`history.json`) that grows as EconPulse runs.
+- **Windows installer that updates itself**: the new `Setup.exe` installs per user without admin rights, with a Start-menu entry and an uninstaller. With update checks on, one click installs a new version, but only after the download matches the release's `SHA256SUMS.txt` and has a GitHub build attestation from this repository. The portable zip is still published.
+- **Docked ticker bar**: the compact bar can be docked along the top or bottom of a screen (Windows). Maximised windows make room for it like the taskbar, it shows as many upcoming releases as fit, and it steps back behind full-screen games, videos and presentations.
+- **Global shortcut** (optional, Windows): <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd> brings the widget up from anywhere.
+- **System keychain on macOS and Linux**: with the optional `keyring` package installed, a FinanceCalendar.com API key is kept in the Keychain or Secret Service instead of the settings file.
 
 ### Changed
 - **Faster, lighter networking & idle loop**: gzip responses with a hard zip-bomb cap, conditional `ETag` / `If-Modified-Since` (`304 Not Modified`) support, concurrent weekly fetches for biquote, adaptive idle polling, skipping offscreen per-minute renders when hidden in the tray, binary-search sticky headers, and bounded LRU text/image caches.
 - **Pure-Python state module** (`econpulse/state.py`) and unified `Event.to_record()` serialization.
 - **Complete locale-driven i18n**: removed hardcoded Persian strings from core UI code, translated dialog titles/warnings, and made the system-tray menu update live when switching languages.
 - **Trimmed Windows PyInstaller bundle** by excluding unused stdlib modules.
+- **Half the requests to biquote**: between hourly downloads of the full three weeks, only yesterday to tomorrow is fetched again, about 6 small requests an hour instead of 12.
+- FinanceCalendar.com is labelled *experimental* in Settings until it has been tested against the live service with a real key.
+- `DEMO_WINDOWS.bat` uses the same private `.venv` as `RUN_WINDOWS.bat`.
+- Settings files carry a schema version and are upgraded step by step when loaded.
+- For contributors and maintainers: the refresh rules live in `econpulse/refresh.py`; mypy type-checks the package (strictly outside the UI); Hypothesis property tests; a random-order test run that fails on leaked files; a daily check of the live data sources; publishing to PyPI with trusted publishing; a winget manifest generator; and new guides for releasing, governance and OBS. A visual check compares the key screens with reference images on every pull request, and monthly mutation testing checks that the tests catch planted bugs. Event times are stored in UTC throughout.
 
 ### Security
 - **Hardened HTTP redirects**: refuse non-HTTPS or non-public/localhost redirect targets, enforce TLS 1.2+, and strip `X-API-Key` / `Authorization` / `Cookie` headers on cross-origin redirects.
@@ -27,13 +41,16 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 - `RUN_WINDOWS.bat` installs the hash-locked packages into a private `.venv` (reinstalled when `requirements.lock` changes) instead of changing the system Python.
 
 ### Fixed
+- **biquote: the last day of each requested week was missing.** biquote treats the end date as exclusive, so 3.3 showed almost nothing for three days of its three-week window, one of them three days from today (often a Friday, a busy day for releases).
+- A `settings.json` with a list or an object as the language or time zone crashed the app at startup. It now falls back to the default, like any other damaged value (found by Hypothesis).
+- An absurdly large figure from a data source was cut to 40 characters, which showed a wrong number. It is now treated as missing (found by Hypothesis).
 - Summary bar counts (`render_stats`) now respect `other_currencies` consistently with the calendar table.
 - Switching data sources while a refresh is in flight now supersedes and discards stale responses instead of dropping the switch.
 - A transient failure writing `fired.json` no longer suppresses alert notifications, and corrupted `fired.json` files no longer crash startup.
 - Right-to-left (Persian) widget resizing from the bottom-left corner now anchors the right edge and uses the matching diagonal cursor.
 - Multi-monitor tooltips, dropdowns, and saved widget positions now clamp to the active monitor (including monitors left of or above primary).
 - Preserved non-major currencies in `settings.json` when toggling filter chips or saving Preferences.
-- Fixed literal `<version>` and `<owner>` placeholders in `tools/release_notes.py`.
+- The verification command in the release notes now names the real version and repository.
 - Pruning the stored alert history (above 4,000 entries) no longer deletes every entry for provider ids that contain `:` (all biquote ids), which could repeat alerts.
 
 ## [3.3.0] - 2026-11-20
@@ -102,5 +119,6 @@ First open-source release.
 ### Added
 - Forex Factory as the data source, with Actual/Forecast/Previous values, bank holidays, Today/Week widget views and countdowns.
 
-[Unreleased]: https://github.com/Kasra-Sartaee/econpulse/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/Kasra-Sartaee/econpulse/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/Kasra-Sartaee/econpulse/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/Kasra-Sartaee/econpulse/releases/tag/v3.3.0

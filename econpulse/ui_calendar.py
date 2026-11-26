@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import tkinter as tk
 
-from . import __version__, i18n, system
+from . import __version__, i18n, system, theme
 from .controls import (
     Label,
     NavItem,
@@ -60,7 +60,7 @@ class CalendarWindowMixin:
             if frame.winfo_exists():
                 frame.destroy()
         root.configure(bg=p['bg'])
-        native_titlebar(root, p, self.cfg['theme'] == 'dark')
+        native_titlebar(root, p, theme.is_dark(self.theme_name()))
 
         shell = tk.Frame(root, bg=p['bg'])
         shell.pack(fill='both', expand=True)

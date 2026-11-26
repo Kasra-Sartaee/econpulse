@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import csv
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .core import Event
 
 # A figure such as -0.2%, +1.5K, 3.38M or -1,200: safe in a spreadsheet as is.
 _PLAIN_NUMBER = re.compile(r'[-+]?\d[\d,]*(\.\d+)?\s*[%KMBTkmbt]?')
 
 
-def csv_cell(value) -> str:
+def csv_cell(value: object) -> str:
     """Neutralise spreadsheet formulas (CSV injection).
 
     Text from a data feed that starts with = + - @ | (or leading whitespace/tabs/CR/LF
@@ -26,7 +31,7 @@ def csv_cell(value) -> str:
     return text
 
 
-def save_csv(path, events, tz):
+def save_csv(path: str | Path, events: Iterable[Event], tz: tzinfo | None) -> None:
     with open(path, 'w', encoding='utf-8-sig', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Date', 'Time', 'Currency', 'Impact', 'Event', 'Actual', 'Forecast', 'Previous'])
@@ -44,7 +49,7 @@ def save_csv(path, events, tz):
             writer.writerow([csv_cell(cell) for cell in row])
 
 
-def ics_text(value):
+def ics_text(value: object) -> str:
     return (
         str(value)
         .replace('\\', '\\\\')
@@ -56,7 +61,7 @@ def ics_text(value):
     )
 
 
-def fold(line):
+def fold(line: str) -> str:
     """RFC 5545 §3.1: lines longer than 75 octets are folded with CRLF + space."""
     raw = line.encode('utf-8')
     if len(raw) <= 75:
@@ -73,7 +78,7 @@ def fold(line):
     return '\r\n '.join(parts)
 
 
-def save_ics(path, events, tz):
+def save_ics(path: str | Path, events: Iterable[Event], tz: tzinfo | None) -> None:
     stamp = datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')
     lines = [
         'BEGIN:VCALENDAR',

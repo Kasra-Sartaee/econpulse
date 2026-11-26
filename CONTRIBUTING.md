@@ -14,7 +14,7 @@ cd econpulse
 python -m venv .venv
 .venv\Scripts\activate          # Windows;  source .venv/bin/activate on macOS/Linux
 python -m pip install -r requirements.txt
-python -m pip install --require-hashes -r requirements-dev.lock   # ruff, bandit, pip-audit, coverage (pinned)
+python -m pip install --require-hashes -r requirements-dev.lock   # ruff, mypy, Hypothesis, bandit, pip-audit, coverage (pinned)
 python -m econpulse --demo      # sample data, no network
 ```
 
@@ -31,13 +31,18 @@ pre-commit install
 python -m unittest discover -s tests     # on Linux without a display: xvfb-run -a python -m unittest ...
 ruff check .
 ruff format --check .
+python -m mypy                          # strict for the pure modules; see [tool.mypy] in pyproject.toml
 bandit -r econpulse -c pyproject.toml
 python -m coverage run -m unittest discover -s tests && python -m coverage report
+python tools/run_tests.py               # random order; fails on leaked files or sockets (replay: --seed N)
+python tools/visual_check.py --out visual   # renders the key screens (Windows); CI compares them
 ```
+
+If your change alters how a screen looks, the *Visual check* job shows the difference; to accept it, copy the new images from that job's `visual` artifact into `tests/visual/`. Mutation testing runs monthly on Linux (`mutmut run`, see `[tool.mutmut]` in `pyproject.toml`): a surviving mutant usually means a test that runs code without checking its result.
 
 Please add or update tests for behaviour you change. Tests that need a window skip themselves where Tk can't open one. CI fails if line coverage (measured on Windows) drops below the floor in `pyproject.toml`; `tests/test_ui.py` shows how to drive whole windows in demo mode without touching real settings.
 
-The parsers for downloaded data are also **fuzzed** (`fuzz/fuzz_calendar_data.py`): a quick deterministic version runs with the tests on every platform, and coverage-guided fuzzing with Atheris runs in CI. If you change a parser, add an example to `fuzz/corpus/` and keep the checks in the fuzz target true.
+The parsers for downloaded data are also **fuzzed** (`fuzz/fuzz_calendar_data.py`): a quick deterministic version runs with the tests on every platform, and coverage-guided fuzzing with Atheris runs in CI. If you change a parser, add an example to `fuzz/corpus/` and keep the checks in the fuzz target true. Rules that should hold for *every* input (not just not crashing) belong in `tests/test_properties.py`, where Hypothesis looks for a counterexample.
 
 Each pull request also gets a **Windows build** you can download from the workflow run's *Artifacts* to try the change without installing Python.
 

@@ -141,6 +141,24 @@ class EconomicCalendarTests(unittest.TestCase):
         self.assertNotIn('bq:old0:30', engine.fired)
         self.assertEqual(engine.check([event], self.now), [])  # nothing fires twice
 
+    def test_surprise_is_the_neutral_gap_between_actual_and_forecast(self):
+        from econpulse.core import surprise
+
+        cases = [
+            (('165K', '142K'), '+23K'),
+            (('0.1%', '0.3%'), '-0.2 pp'),
+            (('-0.2%', '-0.2%'), '0.0 pp'),
+            (('54.9', '52'), '+2.9'),
+            (('1,250K', '1,200K'), '+50K'),
+            (('3.38M', '3.5M'), '-0.12M'),
+            (('2%', '150K'), ''),  # different kinds of figure
+            (('', '1%'), ''),
+            (('1%', ''), ''),
+            (('n/a', '1%'), ''),
+        ]
+        for (actual, forecast), expected in cases:
+            self.assertEqual(surprise(actual, forecast), expected, (actual, forecast))
+
     def test_alert_engine_handles_corrupted_fired_data(self):
         for bad in (123, {'a': 1}, 'oops', [1, None, 'ok:5', 'x' * 300]):
             engine = AlertEngine(bad)

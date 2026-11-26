@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from pathlib import Path
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from . import REPO_URL, __version__, i18n, state, system, theme
+from . import REPO_URL, __version__, history, i18n, state, system, theme
 from .controls import (
     FlatSelect,
     Panel,
@@ -19,7 +20,7 @@ from .controls import (
     impact_mark,
     wheel_units,
 )
-from .core import CURRENCIES, TIMEZONES
+from .core import CURRENCIES, TIMEZONES, surprise
 from .exports import save_csv, save_ics
 from .providers import PROVIDERS
 from .storage import data_dir, safe_write_text, save_settings, validate_settings
@@ -46,7 +47,7 @@ class DialogsMixin:
             f'Language: {i18n.language()}  Theme: {self.cfg.get("theme")}  Scale: {theme.scale():.2f}',
             f'Data source: {self.cfg.get("provider")} -> showing {self.source} '
             f'(actuals: {self.has_actuals}, events: {len(self.events)})',
-            f'Last sync: {self.at.isoformat() if self.at else "never"}  Failures in a row: {self.failures}',
+            f'Last sync: {self.at.isoformat() if self.at else "never"}  Failures in a row: {self.policy.failures}',
             f'Status: {self.warning or "ok"}',
             '',
             'Recent log warnings/errors:',
@@ -87,7 +88,7 @@ class DialogsMixin:
         x, y = max(l, min(x, r - w)), max(t, min(y, b - h))
         d.geometry(f'{w}x{h}+{x}+{y}')
         d.deiconify()
-        native_titlebar(d, self.p, self.cfg['theme'] == 'dark')
+        native_titlebar(d, self.p, theme.is_dark(self.theme_name()))
         d.lift()
         d.focus_force()
 
@@ -165,6 +166,9 @@ class DialogsMixin:
         info = []
         if e.actual_tone:
             info.append(tr(f'Actual came in {e.actual_tone} than forecast.'))
+        gap = surprise(e.actual, e.forecast)
+        if gap:
+            info.append(f'{tr("Actual vs forecast")}: {gap}')
         if e.revised_from:
             info.append(i18n.revised_from(e.revised_from))
         if e.period:
@@ -173,6 +177,8 @@ class DialogsMixin:
             info.append(tr('All-day market or bank holiday; trading hours may vary.'))
         info.append(f'{tr("Source")}: {e.source}')
         self.label(body, '\n'.join(info), 9, p['faded'], p['bg'], justify='left').pack(anchor='w')
+        if not e.is_holiday and not e.is_untimed:
+            self._release_history(body, e)
 
         # Per-event private trading note (persists across recurring releases of the same indicator)
         note_key = state.event_key(e)
@@ -247,6 +253,37 @@ class DialogsMixin:
         d.bind('<Escape>', lambda _e: close_detail())
         d.bind('<Return>', lambda _e: None if d.focus_get() is note_box else close_detail())
         self._present(d, parent, px(500), None)
+
+    def _release_history(self, body, e):
+        """The indicator's earlier releases from the local archive (econpulse/history.py)."""
+        p, tz = self.p, self.tz()
+        self.label(body, 'Recent releases', 9, p['soft'], p['bg'], weight='semibold').pack(
+            anchor='w', pady=(px(14), px(4))
+        )
+        past = history.for_event(e)
+        if not past:
+            self.label(body, 'History builds up as EconPulse runs.', 9, p['faded'], p['bg']).pack(anchor='w')
+            return
+        table = tk.Frame(body, bg=p['bg'])
+        table.pack(fill='x')
+        headings = ('Date', 'Actual', 'Forecast', 'Actual vs forecast')
+        for col, heading in enumerate(headings):
+            table.grid_columnconfigure(self.col(col, 3), weight=1, uniform='history')
+            self.label(table, heading, 8, p['faded'], p['bg'], anchor='w').grid(
+                row=0, column=self.col(col, 3), sticky='ew', pady=(0, px(2))
+            )
+        for row, item in enumerate(past, 1):
+            day = datetime.fromisoformat(item['at']).astimezone(tz).date()
+            cells = (
+                i18n.date_text(day, 'short'),
+                item['actual'],
+                item['forecast'] or '—',
+                surprise(item['actual'], item['forecast']) or '—',
+            )
+            for col, text in enumerate(cells):
+                self.label(table, text, 9, p['text'] if col else p['soft'], p['bg'], numeric=col > 0, anchor='w').grid(
+                    row=row, column=self.col(col, 3), sticky='ew'
+                )
 
     def notes(self):
         p = self.p
@@ -401,7 +438,13 @@ class DialogsMixin:
             values[name] = var
 
         look = group(self.tr('Appearance'))
-        segmented(look, self.tr('Theme'), 'theme', [('dark', self.tr('Dark')), ('light', self.tr('Light'))])
+        segmented(
+            look,
+            self.tr('Theme'),
+            'theme',
+            [('dark', self.tr('Dark')), ('light', self.tr('Light')), ('contrast', self.tr('High contrast'))],
+        )
+        segmented(look, self.tr('Text size'), 'text_size', [('100', '100%'), ('115', '115%'), ('130', '130%')])
         segmented(look, self.tr('Language'), 'language', i18n.language_choices())
         select(look, self.tr('Time zone'), 'timezone', list(TIMEZONES))
         segmented(
@@ -450,6 +493,13 @@ class DialogsMixin:
         floating = group(self.tr('Widget'))
         toggle(floating, self.tr('Always on top of other windows'), 'topmost')
         toggle(floating, self.tr('Compact ticker bar'), 'widget_compact')
+        if system.AppBar.supported():
+            segmented(
+                floating,
+                self.tr('Dock the compact bar'),
+                'compact_dock',
+                [('off', self.tr('Off')), ('top', self.tr('Top')), ('bottom', self.tr('Bottom'))],
+            )
         opacity_val = str(min((60, 75, 90, 100), key=lambda o: abs(o - int(self.cfg.get('widget_opacity', 100)))))
         opacity_var = tk.StringVar(value=opacity_val)
         Segmented(
@@ -465,6 +515,8 @@ class DialogsMixin:
         if system.startup_supported():
             toggle(floating, self.tr('Start automatically at login'), 'startup', system.get_startup())
         toggle(floating, self.tr('Show bank and market holidays'), 'holiday')
+        if system.GlobalHotkey.supported():
+            toggle(floating, self.tr('Show the widget from anywhere with Ctrl+Alt+E'), 'global_hotkey')
 
         alerts = group(self.tr('Alerts'))
         toggle(alerts, self.tr('Desktop notifications for high-impact releases'), 'notifications')
@@ -503,7 +555,10 @@ class DialogsMixin:
             p,
             width=230,
             height=32,
-            labels={key: provider.name for key, provider in PROVIDERS.items()},
+            labels={
+                key: f'{provider.name} ({self.tr("experimental")})' if provider.experimental else provider.name
+                for key, provider in PROVIDERS.items()
+            },
         ).pack(side='right')
         values['provider'] = provider_var
         notes = tk.Frame(sources.body, bg=p['card'])
@@ -600,7 +655,7 @@ class DialogsMixin:
             before = (self.cfg.get('provider'), self.cfg.get('financecalendar_key'), self.cfg.get('check_updates'))
             for name, var in values.items():
                 val = var.get()
-                if name in ('widget_opacity', 'refresh_minutes'):
+                if name in ('widget_opacity', 'refresh_minutes', 'text_size'):
                     val = int(val)
                 self.cfg[name] = val
             self.cfg['financecalendar_key'] = ''.join(key_var.get().split())[:128]
@@ -627,14 +682,21 @@ class DialogsMixin:
             showing = self.widget is not None and self.widget.winfo_exists()
             if showing:
                 self._drop_widget()
-            self.p = theme.palette(self.cfg['theme'])
+            theme.set_text_size(self.cfg['text_size'])
+            self.p = theme.palette(self.theme_name())
             self.root.configure(bg=self.p['bg'])
             self.build_full()
             if showing:
                 self.show_widget()
             self.render()
+            if not self.apply_global_hotkey():
+                messagebox.showwarning(
+                    self.tr('Global shortcut'),
+                    self.tr('Ctrl+Alt+E is already used by another program, so EconPulse cannot use it.'),
+                    parent=self.root,
+                )
             if source_changed:
-                self.failures, self.next_attempt, self.retry_until = 0, None, None
+                self.policy.reset_backoff()
                 self.refresh(force=True, supersede=True)
             if after[2] and not before[2]:
                 self.check_for_updates()

@@ -4,7 +4,7 @@ Every payload here is invented: same field shapes as the real services, made-up
 events and figures. No network access.
 """
 
-from datetime import timedelta, timezone
+from datetime import date, timedelta, timezone
 import io
 import os
 import tempfile
@@ -16,6 +16,14 @@ from helpers import NOW, collect_tk_garbage
 
 from econpulse import USER_AGENT, feed
 from econpulse.providers import PROVIDERS, KeyRejected, ProviderError, RateLimited, base, biquote, financecalendar
+
+
+def biquote_days(params):
+    """The days a real biquote request covers: 'from' inclusive, 'to' an exclusive midnight."""
+    first, until = date.fromisoformat(params['from']), date.fromisoformat(params['to'])
+    if until <= first:
+        raise ProviderError('HTTP 400')  # biquote: "'to' must be after 'from'"
+    return [(first + timedelta(days=i)).isoformat() for i in range((until - first).days)]
 
 
 def setUpModule():
@@ -165,12 +173,16 @@ class ValueFormattingTests(unittest.TestCase):
             ((-0.0, 'percent', 'none', 1), '0.0%'),
             ((None, 'percent', 'none', 1), ''),
             ((54.9, None, None, 2), '54.90'),
+            ((1e57, None, None, None), ''),  # absurd magnitude: missing, never a truncated wrong number
         ]
         for args, expected in cases:
             self.assertEqual(biquote.format_value(*args), expected, args)
 
 
 class BiquoteTests(unittest.TestCase):
+    def setUp(self):
+        PROVIDERS['biquote'].reset()  # the provider remembers its last full download
+
     def test_mapping(self):
         from econpulse.core import parse_feed
 
@@ -200,8 +212,20 @@ class BiquoteTests(unittest.TestCase):
             events = PROVIDERS['biquote'].fetch(NOW)
         self.assertEqual(len(events), 5)
         self.assertEqual(min(c['from'] for c in calls), '2026-11-01')
-        self.assertEqual(max(c['to'] for c in calls), '2026-11-21')
+        self.assertEqual(max(c['to'] for c in calls), '2026-11-22')  # 'to' is exclusive
         self.assertLessEqual(len(calls), 3)
+
+    def test_every_day_of_the_window_is_requested(self):
+        # Regression: biquote's 'to' is exclusive, so asking for (start, stop) silently
+        # dropped the last day of each week: Fridays at the span edges came back empty.
+        def fake(url, params=None, **kw):
+            return [dict(BIQUOTE_ROWS[0], id=f'{d}', time=f'{d}T13:30:00Z') for d in biquote_days(params)]
+
+        with mock.patch.object(biquote, 'http_get_json', side_effect=fake):
+            events = PROVIDERS['biquote'].fetch(NOW)
+        days = {e.instant.date() for e in events}
+        window = [NOW.date() + timedelta(days=i) for i in range(-10, 11)]
+        self.assertEqual(sorted(days), window)
 
     def test_full_page_is_split(self):
         full = [dict(BIQUOTE_ROWS[0], id=f'x{i}') for i in range(biquote.PAGE_LIMIT)]
@@ -209,7 +233,7 @@ class BiquoteTests(unittest.TestCase):
 
         def fake(url, params=None, **kw):
             calls.append(params)
-            if params['from'] == '2026-11-01' and params['to'] == '2026-11-07':
+            if params['from'] == '2026-11-01' and params['to'] == '2026-11-08':
                 return full
             return BIQUOTE_ROWS
 
@@ -219,8 +243,8 @@ class BiquoteTests(unittest.TestCase):
         split_calls = [
             c
             for c in calls
-            if ('2026-11-01' <= c['from'] <= '2026-11-07' and c['to'] != '2026-11-07')
-            or (c['from'] != '2026-11-01' and c['to'] == '2026-11-07')
+            if ('2026-11-01' <= c['from'] <= '2026-11-07' and c['to'] != '2026-11-08')
+            or (c['from'] != '2026-11-01' and c['to'] == '2026-11-08')
         ]
         self.assertGreaterEqual(len(split_calls), 2)
 
@@ -239,6 +263,36 @@ class BiquoteTests(unittest.TestCase):
         days = {e.instant.date().isoformat() for e in events}
         for c in calls:
             self.assertIn(c['from'], days)  # nothing fetched was thrown away
+
+    def test_between_hourly_full_refreshes_only_yesterday_to_tomorrow_is_downloaded(self):
+        def row(i, day):
+            return dict(BIQUOTE_ROWS[0], id=f'{day}-{i}', name=f'Figure {i}', time=f'{day}T13:30:00Z')
+
+        calls = []
+        actual = {'2026-11-11': ''}
+
+        def fake(url, params=None, **kw):
+            calls.append((params['from'], params['to']))
+            return [dict(row(0, d), actual=actual.get(d, 1.0)) for d in biquote_days(params)]
+
+        provider = PROVIDERS['biquote']
+        with mock.patch.object(biquote, 'http_get_json', side_effect=fake):
+            full = provider.fetch(NOW)
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(next(e for e in full if e.instant.date().isoformat() == '2026-11-11').actual, '')
+            calls.clear()
+            actual['2026-11-11'] = 2.5  # today's figure is published
+            later = provider.fetch(NOW + timedelta(minutes=15))
+            self.assertEqual(calls, [('2026-11-10', '2026-11-13')])  # one request, not three
+            self.assertEqual(len(later), len(full))  # the rest of the window is kept
+            today = next(e for e in later if e.instant.date().isoformat() == '2026-11-11')
+            self.assertEqual(today.actual, biquote.format_value(2.5, 'job', 'thousands', 0))  # refreshed
+            calls.clear()
+            provider.fetch(NOW + timedelta(minutes=61))
+            self.assertEqual(len(calls), 3)  # hourly full refresh
+            calls.clear()
+            provider.fetch(NOW + timedelta(hours=13))  # past midnight UTC: the window moved
+            self.assertEqual(len(calls), 3)
 
 
 class FinanceCalendarTests(unittest.TestCase):

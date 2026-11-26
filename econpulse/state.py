@@ -6,8 +6,9 @@ No Tkinter dependency — every function here is fast and directly unit-testable
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
+from typing import Any
 
 from .core import CURRENCIES, Event, series_key
 from .storage import data_dir, read_json, safe_write_json
@@ -20,7 +21,7 @@ PUBLISHED_MAX_AGE = timedelta(minutes=30)  # older releases are not news any mor
 event_key = series_key  # star / note key for an indicator across recurring releases
 
 
-def watched_currencies(cfg: dict) -> set[str] | None:
+def watched_currencies(cfg: dict[str, Any]) -> set[str] | None:
     """Currencies the user follows: explicit selection, else majors (or None for all)."""
     selected = cfg.get('currencies') or []
     if selected:
@@ -109,10 +110,10 @@ def status_snapshot(
     source: str,
     at: datetime | None,
     now: datetime,
-    tz,
-) -> dict:
+    tz: tzinfo | None,
+) -> dict[str, Any]:
     """Compact JSON payload written to ``next.json`` for OBS / Stream Deck / scripts."""
-    payload: dict = {
+    payload: dict[str, Any] = {
         'updated_at': now.isoformat(),
         'state': state,
         'source': source,
@@ -138,7 +139,7 @@ def status_snapshot(
     return payload
 
 
-def write_status_snapshot(payload: dict, folder: Path | None = None) -> None:
+def write_status_snapshot(payload: dict[str, Any], folder: Path | None = None) -> None:
     target = (folder or data_dir()) / STATUS_FILE
     safe_write_json(target, payload, indent=2)
 

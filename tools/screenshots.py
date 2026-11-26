@@ -111,7 +111,7 @@ def shoot(name, lang, palette, view, step, out: Path, live: bool):
             app = app_module.EconPulse(root, Namespace(demo=not live, full=view == 'full', widget=view == 'widget'))
         if live:
             deadline = time.monotonic() + 30
-            while app.inflight and time.monotonic() < deadline:
+            while app.policy.inflight and time.monotonic() < deadline:
                 pump(root, 0.2)
         window = app.widget if view == 'widget' else root
         window.attributes('-topmost', True)

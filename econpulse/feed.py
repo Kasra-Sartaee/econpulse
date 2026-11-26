@@ -25,7 +25,7 @@ LEGACY_CACHE = 'cache-v3.json'
 FRESH_ENOUGH = timedelta(hours=3)
 
 
-def serialize(e: Event) -> dict:
+def serialize(e: Event) -> dict[str, str]:
     return e.to_record()
 
 
@@ -50,6 +50,8 @@ def load_cache() -> FeedResult:
 
 
 def save_cache(result: FeedResult) -> None:
+    if result.at is None:
+        return  # only fresh downloads are cached, and they always carry their time
     safe_write_json(
         data_dir() / CACHE_FILE,
         {

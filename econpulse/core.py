@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
+from decimal import Decimal
 import hashlib
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -32,13 +34,14 @@ TIMEZONES = {
 }
 
 
-def desired_timezone(name: str):
+def desired_timezone(name: str) -> tzinfo | None:
     location = TIMEZONES.get(name)
     if location is None:
         try:
             from tzlocal import get_localzone
 
-            return get_localzone()
+            local: tzinfo = get_localzone()
+            return local
         except (ImportError, RuntimeError, OSError):
             return datetime.now().astimezone().tzinfo
     try:
@@ -55,7 +58,7 @@ _CURRENCY = re.compile(r'[A-Z]{3}')
 _UID_UNSAFE = re.compile(r'[^A-Za-z0-9._:@/-]+')
 
 
-def _text(value, limit: int = 300) -> str:
+def _text(value: object, limit: int = 300) -> str:
     """Provider text, whitespace-normalised and length-capped (defensive against odd feeds)."""
     return ' '.join(str(value or '').split())[:limit].rstrip()
 
@@ -64,7 +67,7 @@ def _digest(text: str) -> str:
     return hashlib.sha1(text.encode('utf8'), usedforsecurity=False).hexdigest()[:20]
 
 
-def _clean_uid(value, fingerprint: str) -> str:
+def _clean_uid(value: object, fingerprint: str) -> str:
     """Provider event id, safe for ICS and the cache.
 
     A plain id (letters, digits, ``._:@/-``, at most 120 characters) is kept as is.
@@ -77,6 +80,37 @@ def _clean_uid(value, fingerprint: str) -> str:
     if raw and len(raw) <= 120 and not _UID_UNSAFE.search(raw):
         return raw
     return 'h:' + _digest(raw) if raw else _digest(fingerprint)
+
+
+_FIGURE = re.compile(r'([-+]?)(\d[\d,]*(?:\.\d+)?)\s*(%|[KMBT])?', re.I)
+
+
+def _figure(text: str) -> tuple[Decimal, str, int] | None:
+    """'-0.2%' -> (Decimal('-0.2'), '%', 1 decimal); None if it isn't one plain figure."""
+    match = _FIGURE.fullmatch(text.strip())
+    if not match:
+        return None
+    sign, digits, unit = match.groups()
+    number = Decimal(digits.replace(',', ''))
+    places = len(digits.partition('.')[2])
+    return (-number if sign == '-' else number), (unit or '').upper(), places
+
+
+def surprise(actual: str, forecast: str) -> str:
+    """How far the Actual landed from the forecast, e.g. '+23K', '-0.1 pp', '+2.9'.
+
+    Neutral on purpose: whether higher is good depends on the indicator. Empty when
+    either value is missing or they aren't the same kind of figure (e.g. % vs K).
+    """
+    a, f = _figure(actual or ''), _figure(forecast or '')
+    if not a or not f or a[1] != f[1]:
+        return ''
+    delta = a[0] - f[0]
+    places = max(a[2], f[2])
+    text = f'{delta:+.{places}f}'
+    if delta == 0:
+        text = f'{0:.{places}f}'
+    return f'{text} pp' if a[1] == '%' else text + a[1]
 
 
 def series_key(e: Event) -> str:
@@ -102,7 +136,7 @@ def normalize_impact(value: object, title: str) -> str:
     return 'Low'
 
 
-def parse_date(value: str) -> datetime:
+def parse_date(value: object) -> datetime:
     if not isinstance(value, str) or not value.strip():
         raise ValueError('Missing event timestamp')
     result = datetime.fromisoformat(value.replace('Z', '+00:00'))
@@ -131,7 +165,7 @@ class Event:
     actual_tone: str = ''  # 'better' / 'worse' vs forecast, as marked by the provider
     revised_from: str = ''  # original previous value when revisedPrevious differs
 
-    def to_record(self) -> dict:
+    def to_record(self) -> dict[str, str]:
         """Canonical dict shape accepted by :func:`parse_feed`."""
         return {
             'id': self.uid,
@@ -161,10 +195,10 @@ class Event:
     def is_holiday(self) -> bool:
         return self.impact == 'Holiday'
 
-    def local_dt(self, tz):
+    def local_dt(self, tz: tzinfo | None) -> datetime:
         return self.instant.astimezone(tz)
 
-    def display_day(self, tz) -> date:
+    def display_day(self, tz: tzinfo | None) -> date:
         # Calendar source associates a holiday with a market's civil date.
         # Never shift that date backward/forward due to the viewer's timezone.
         if self.is_untimed and self.source_day:
@@ -174,7 +208,7 @@ class Event:
                 pass
         return self.instant.date() if self.is_untimed else self.local_dt(tz).date()
 
-    def when_text(self, tz) -> str:
+    def when_text(self, tz: tzinfo | None) -> str:
         return (
             ('ALL DAY' if self.is_holiday else self.time_label)
             if self.is_untimed
@@ -232,7 +266,7 @@ def parse_feed(body: object) -> list[Event]:
                 uid=uid,
                 title=title,
                 currency=currency,
-                instant=stamp,
+                instant=stamp.astimezone(UTC),  # one offset everywhere: ISO strings then sort correctly
                 impact=impact,
                 forecast=_text(record.get('forecast'), 40),
                 previous=_text(record.get('previous'), 40),
@@ -253,9 +287,9 @@ def parse_feed(body: object) -> list[Event]:
     return sorted(events, key=lambda e: (e.instant, e.currency, e.title))
 
 
-def weekly_sections(events, tz):
+def weekly_sections(events: Iterable[Event], tz: tzinfo | None) -> list[tuple[date, list[Event]]]:
     """Preserve chronology while grouping by calendar date in the display timezone."""
-    result = []
+    result: list[tuple[date, list[Event]]] = []
     for event in events:
         day = event.display_day(tz)
         if not result or result[-1][0] != day:
@@ -273,13 +307,21 @@ class AlertEngine:
 
     THRESHOLDS = (30, 15, 5, 0)
 
-    def __init__(self, fired=None):
+    def __init__(self, fired: object = None) -> None:
         if isinstance(fired, (list, set, tuple)):
             self.fired = {k for k in fired if isinstance(k, str) and len(k) <= 160}
         else:
             self.fired = set()
 
-    def check(self, events, now=None, *, currencies=None, enabled_stages=(30, 15, 5, 0), starred=None):
+    def check(
+        self,
+        events: Iterable[Event],
+        now: datetime | None = None,
+        *,
+        currencies: Iterable[str] | None = None,
+        enabled_stages: Collection[int] = (30, 15, 5, 0),
+        starred: Iterable[str] | None = None,
+    ) -> list[tuple[Event, int]]:
         now = now or datetime.now(UTC)
         selected = set(currencies or ())
         starred_keys = set(starred or ())

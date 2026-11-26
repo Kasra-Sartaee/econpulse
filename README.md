@@ -90,21 +90,35 @@ Calendar, Today, Upcoming, Released and Bank holidays views, with search, curren
 <td valign="top">
 
 **Actual · Forecast · Previous**<br>
-Values for every release as they're published, live countdowns, and a details window with a link to the original source.
+Values for every release as they're published, how far the Actual landed from the forecast (for example *+23K* or *−0.1 pp*), revisions to the previous figure, the indicator's recent releases, live countdowns, and a link to the original source.
 
 </td>
 <td valign="top">
 
 **Alerts**<br>
-Desktop notifications 30, 15 and 5 minutes before high-impact releases and as they're published, each one optional, with an optional sound. Each alert fires once, even across restarts.
+Desktop notifications 30, 15 and 5 minutes before high-impact releases and as they're published, plus a *Result published* alert when the figure arrives. Each one is optional, fires once even across restarts, and the sound stays quiet during Focus Assist and full-screen apps.
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
+**Watchlist and notes**<br>
+Star any indicator to get its alerts whatever its impact, and keep a private note on it that carries over to next month's release. A compact ticker bar (<kbd>Ctrl</kbd>+<kbd>M</kbd>) can be docked along the top or bottom of the screen like the taskbar, showing the next releases side by side, and <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd> brings the widget up from anywhere (optional).
+
+</td>
+<td valign="top">
+
 **Export**<br>
-Save the current view to CSV for spreadsheets (safe to open in Excel) or ICS for calendar apps.
+Save the current view to CSV for spreadsheets (safe to open in Excel) or ICS for calendar apps. An optional `next.json` file feeds [OBS, Stream Deck or your own scripts](docs/OBS.md).
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Accessible**<br>
+A high-contrast theme (used automatically when Windows' contrast themes are on), text at 100, 115 or 130 %, full keyboard control with visible focus, and impact shown by shape as well as colour.
 
 </td>
 <td valign="top">
@@ -118,7 +132,7 @@ Persian mirrors the entire layout right to left and shows Solar Hijri dates. Add
 <td valign="top">
 
 **Polished everywhere**<br>
-Dark and light themes, sharp on high-DPI screens, any time zone, a system-tray menu, start at login, and private trading notes.
+Dark, light and high-contrast themes, sharp on high-DPI screens, 18 trading time zones, a system-tray menu, start at login, and private trading notes.
 
 </td>
 <td valign="top">
@@ -168,8 +182,12 @@ Starts in about a quarter of a second. Lists draw only the visible rows, and the
 | macOS | [Run from source](#run-from-source) | Experimental |
 | Linux | [Run from source](#run-from-source) | Experimental |
 
-1. Download `EconPulse-<version>-Windows.zip` from the [latest release](https://github.com/Kasra-Sartaee/econpulse/releases/latest).
-2. Unzip it anywhere and run `EconPulse\EconPulse.exe`. Keep the `_internal` folder next to it. No installer, no Python, no admin rights.
+From the [latest release](https://github.com/Kasra-Sartaee/econpulse/releases/latest), take either:
+
+- **`EconPulse-<version>-Setup.exe`** (recommended): installs for your account only, with no admin rights, adds a Start-menu entry and an uninstaller, and **updates itself**. When a new version is out (with *Tell me when a new version is out* on in Settings), one click downloads it, checks it and installs it.
+- **`EconPulse-<version>-Windows.zip`**: the portable app. Unzip it anywhere and run `EconPulse\EconPulse.exe`, keeping the `_internal` folder next to it. It tells you about new versions but never replaces itself.
+
+No Python needed either way, and your settings and notes are kept across updates and uninstalls.
 
 The app isn't code-signed yet, so Windows SmartScreen may warn the first time: choose **More info → Run anyway**.
 
@@ -179,15 +197,17 @@ The app isn't code-signed yet, so Windows SmartScreen may warn the first time: c
 
 Every release is built by GitHub Actions from this repository with hash-pinned tools. Each release includes:
 
-- `SHA256SUMS.txt`: checksums. In PowerShell: `Get-FileHash EconPulse-<version>-Windows.zip`
+- `SHA256SUMS.txt`: checksums of the installer, the zip and the SBOM. In PowerShell: `Get-FileHash EconPulse-<version>-Setup.exe`
 - `EconPulse-<version>-SBOM.cdx.json`: a CycloneDX software bill of materials listing every package in the build
 - `EconPulse-<version>.sigstore.json`: signed build provenance
 
-With the [GitHub CLI](https://cli.github.com/), this proves the zip was built here, from a specific commit:
+With the [GitHub CLI](https://cli.github.com/), this proves a file was built here, from a specific commit:
 
 ```sh
-gh attestation verify EconPulse-<version>-Windows.zip --repo Kasra-Sartaee/econpulse
+gh attestation verify EconPulse-<version>-Setup.exe --repo Kasra-Sartaee/econpulse
 ```
+
+The in-app updater makes the same kind of check before it runs anything: the installer must match the release's `SHA256SUMS.txt`, and GitHub must hold a build attestation for it from this repository.
 
 </details>
 
@@ -227,7 +247,7 @@ Double-click `BUILD_WINDOWS.bat`. It creates a private virtual environment from 
 
 ## Data sources
 
-EconPulse has no server. Your computer fetches the calendar directly, at most every 15 minutes, and backs off (30, then 60, then 120 minutes) after errors or when a source asks it to wait. If you turn on *Fast check after high-impact releases* (off by default), it also checks 45 seconds and 3 minutes after a watched release time, while that release's Actual value is still missing.
+EconPulse has no server. Your computer fetches the calendar directly, at most every 15 minutes, and backs off (30, then 60, then 120 minutes) after errors or when a source asks it to wait. Only yesterday to tomorrow can change during the day, so that is all it downloads between hourly refreshes of the full three weeks: about 6 small requests an hour. If you turn on *Fast check after high-impact releases* (off by default), it also checks 45 seconds and 3 minutes after a watched release time, while that release's Actual value is still missing.
 
 | Source | What it provides | Setup |
 |---|---|---|
@@ -246,7 +266,7 @@ Want another source? See [docs/PROVIDERS.md](docs/PROVIDERS.md).
 
 - **No account, no telemetry, no analytics.**
 - **Network requests** go only to your data source (plus the Forex Factory export as a fallback). They also go to GitHub once a day if you switch on **Tell me when a new version is out**, which is off by default. Requests identify the app as `EconPulse/<version>` and send nothing about you.
-- **Everything stays local** in your data folder: `%APPDATA%\EconPulse` on Windows, `~/Library/Application Support/EconPulse` on macOS, `~/.config/EconPulse` on Linux. That covers settings (including an optional API key), cached calendar data, alert history, trading notes (plain text) and a small log. **Settings → About → Open data folder** takes you there.
+- **Everything stays local** in your data folder: `%APPDATA%\EconPulse` on Windows, `~/Library/Application Support/EconPulse` on macOS, `~/.config/EconPulse` on Linux. That covers settings (an optional API key is encrypted for your Windows account, or kept in the macOS Keychain or Linux Secret Service when the `keyring` package is installed), cached calendar data, a record of past releases, alert history, trading notes and per-indicator notes (plain text), an optional `next.json` status file and a small log. **Settings → About → Open data folder** takes you there.
 - **Hardened input handling.** Everything is fetched over HTTPS only, with size-capped responses, length-limited fields and validated settings. Links open only if they're `https://`, and CSV exports are protected against spreadsheet formula injection.
 - **Continuously checked** by [CodeQL](https://codeql.github.com/), [Bandit](https://bandit.readthedocs.io/), [pip-audit](https://pypi.org/project/pip-audit/), [OpenSSF Scorecard](https://scorecard.dev/) and Dependabot. The code that reads downloaded data is [fuzzed](fuzz/fuzz_calendar_data.py) with [Atheris](https://github.com/google/atheris) on every change. All GitHub Actions and dependencies are pinned to hashes.
 - **Recognised good practice:** EconPulse holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/16977) passing badge.
@@ -325,11 +345,15 @@ Please do! A language is one file (<a href="docs/TRANSLATING.md">guide</a>), and
 These are ideas, not promises. [Open an issue](https://github.com/Kasra-Sartaee/econpulse/issues/new/choose) to discuss one or to pick it up.
 
 - [ ] Code-signed Windows builds, so SmartScreen stops warning
-- [ ] An installer and a `winget` package
+- [x] An installer that updates itself, with verified downloads
+- [ ] `winget install EconPulse` (the manifests are generated by `tools/winget_manifest.py`; the first submission is pending)
+- [ ] `pipx install econpulse` from PyPI (the publishing workflow is ready; it needs a one-time PyPI setup)
 - [ ] Packaged builds for macOS and Linux
 - [ ] More languages: Arabic, Turkish, Spanish, Chinese… (help wanted)
-- [ ] More data sources with open terms
-- [ ] Custom alerts for individual releases or currencies
+- [ ] More data sources with open terms, and comparing two sources when both are available
+- [ ] Per-indicator alert rules and quiet hours
+- [x] Indicator history: an indicator's recent releases against their forecasts
+- [ ] Screen-reader support (needs a UI toolkit with accessibility support; see [ARCHITECTURE.md](docs/ARCHITECTURE.md))
 
 ## Documentation
 
@@ -340,6 +364,9 @@ These are ideas, not promises. [Open an issue](https://github.com/Kasra-Sartaee/
 | [docs/PROVIDERS.md](docs/PROVIDERS.md) | Adding a data source |
 | [docs/TRANSLATING.md](docs/TRANSLATING.md) | Adding a language |
 | [SECURITY.md](SECURITY.md) | Reporting vulnerabilities; what the app stores and connects to |
+| [docs/OBS.md](docs/OBS.md) | Showing the next release in OBS, Stream Deck or a script |
+| [docs/RELEASING.md](docs/RELEASING.md) | Making a release (maintainers) |
+| [GOVERNANCE.md](GOVERNANCE.md) | Who decides, and how changes are reviewed |
 | [SUPPORT.md](SUPPORT.md) | Getting help |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 

@@ -1,12 +1,13 @@
 """OS integration: safe links, start-at-login files, single instance, update check."""
 
 from datetime import UTC, datetime, timedelta
+import os
 import plistlib
 import sys
 import unittest
 from unittest import mock
 
-import helpers  # noqa: F401  (makes the package importable)
+import helpers
 
 from econpulse import system, updates
 
@@ -107,6 +108,69 @@ class UpdateCheckTests(unittest.TestCase):
             mock.patch.object(updates, 'http_get_json', return_value={'tag_name': 'v3.4.1'}),
         ):
             self.assertEqual(updates.latest_release(), '3.4.1')
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'global shortcuts are Windows-only')
+class GlobalHotkeyTests(unittest.TestCase):
+    """Real registration with Windows; the key press is simulated by posting WM_HOTKEY
+    to the shortcut's own thread, so nothing is typed into the user's desktop."""
+
+    KEY = 'J'  # Ctrl+Alt+J: rarely bound, and the test skips if another program has it
+
+    def test_register_deliver_refuse_and_release(self):
+        import ctypes
+        import threading
+
+        from econpulse.system import GlobalHotkey
+
+        fired = threading.Event()
+        first = GlobalHotkey(self.KEY, fired.set)
+        if not first.start():
+            self.skipTest('Ctrl+Alt+J is taken on this machine')
+        try:
+            ctypes.windll.user32.PostThreadMessageW(first._thread_id, GlobalHotkey.WM_HOTKEY, 1, 0)
+            self.assertTrue(fired.wait(2), 'the shortcut action did not run')
+            second = GlobalHotkey(self.KEY, lambda: None)
+            self.assertFalse(second.start(), 'Windows let two programs take the same shortcut')
+            second.stop()
+        finally:
+            first.stop()
+        again = GlobalHotkey(self.KEY, lambda: None)
+        self.assertTrue(again.start(), 'stop() did not release the shortcut')
+        again.stop()
+
+
+@unittest.skipUnless(
+    sys.platform == 'win32' and os.environ.get('ECONPULSE_TEST_APPBAR'),
+    'changes the screen work area for a moment; set ECONPULSE_TEST_APPBAR=1 to run',
+)
+class AppBarTests(unittest.TestCase):
+    def test_docking_reserves_the_strip_and_undocking_returns_it(self):
+        import ctypes
+        from ctypes import wintypes
+
+        from econpulse.system import AppBar
+
+        def work_area():
+            rc = wintypes.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rc), 0)
+            return rc.left, rc.top, rc.right, rc.bottom
+
+        root = helpers.tk_root(withdraw=False)
+        try:
+            root.overrideredirect(True)
+            root.geometry('300x40+50+50')
+            root.update()
+            before = work_area()
+            bar = AppBar(root)
+            strip = bar.dock('top', 40)
+            self.assertIsNotNone(strip)
+            self.assertEqual(strip[3] - strip[1], 40)
+            self.assertGreater(work_area()[1], before[1])  # maximised windows now start below the bar
+            bar.undock()
+            self.assertEqual(work_area(), before)
+        finally:
+            root.destroy()
 
 
 if __name__ == '__main__':

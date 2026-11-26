@@ -145,18 +145,21 @@ class NextUp(tk.Canvas):
 
 
 class CompactBar(tk.Canvas):
-    """Single-line floating ticker bar for the next high-impact release."""
+    """Single-line ticker of the next high-impact releases.
+
+    As many releases as fit are shown side by side, each with its own live countdown:
+    one in the small floating bar, several when the bar is docked across a screen edge.
+    """
 
     HEIGHT = 44
+    SLOT = 400  # logical pixels per release
 
     def __init__(self, parent, palette, open_event, bg=None):
         self.p = palette
         self.open_event = open_event
-        self.event = None
+        self.events: list[Event] = []
         self.tz = UTC
-        self.count_item = None
-        self.count_text = ''
-        self.count_colour = ''
+        self.slots: list[tuple[Event, int, str, str]] = []  # (event, countdown item, text, colour)
         self._now = None
         super().__init__(
             parent,
@@ -166,17 +169,35 @@ class CompactBar(tk.Canvas):
             borderwidth=0,
         )
         self.bind('<Configure>', lambda _e: self.redraw())
-        self.bind('<Double-Button-1>', lambda _e: self.event and self.open_event(self.event))
+        self.bind('<Double-Button-1>', self._open)
 
-    def set(self, event, tz, now):
-        if event is not None and event == self.event and tz == self.tz and self.count_item is not None:
+    @property
+    def event(self):
+        """The next release (the first slot), or None."""
+        return self.events[0] if self.events else None
+
+    def set(self, events, tz, now):
+        events = list(events)
+        if events and events == self.events and tz == self.tz and self.slots:
             self.tick(now)
             return
-        self.event, self.tz, self._now = event, tz, now
+        self.events, self.tz, self._now = events, tz, now
         self.redraw()
 
-    def _countdown(self, now):
-        e = self.event
+    def _slot_width(self, w):
+        count = max(1, min(len(self.events), w // px(self.SLOT)))
+        return w / count, count
+
+    def _open(self, e):
+        if not self.events:
+            return
+        w = max(px(220), self.winfo_width())
+        width, count = self._slot_width(w)
+        x = Mirror(w).x(e.x)  # slot order follows the reading direction
+        index = min(count - 1, int(x // width))
+        self.open_event(self.events[index])
+
+    def _countdown(self, e, now):
         left = (e.instant - now).total_seconds()
         text = e.countdown(now) if left >= 0 else tr('Now')
         colour = self.p['red'] if left < 15 * 60 else self.p['text']
@@ -184,13 +205,13 @@ class CompactBar(tk.Canvas):
 
     def redraw(self):
         self.delete('all')
+        self.slots = []
         p = self.p
         w = max(px(220), self.winfo_width())
         cy = px(self.HEIGHT) / 2
         m = Mirror(w)
-        left, right = px(12), w - px(10)
-        e = self.event
-        if e is None:
+        if not self.events:
+            left = px(12)
             dot(self, m.x(left + px(3)), cy, px(6), p['faded'])
             self.create_text(
                 m.x(left + px(14)),
@@ -200,41 +221,43 @@ class CompactBar(tk.Canvas):
                 fill=p['soft'],
                 font=font(9, 'semibold'),
             )
-            self.count_item = None
             return
         from datetime import datetime
 
         now = self._now or datetime.now(UTC)
-        text, colour = self._countdown(now)
-        cf = num(12, 'bold')
-        self.count_item = self.create_text(m.x(right), cy, text=text, anchor=m.a('e'), fill=colour, font=cf)
-        self.count_text, self.count_colour = text, colour
-        reserve = cf.measure('0d 00:00:00' if 'd' in text else '00:00:00') + px(12)
-        dot(self, m.x(left + px(3)), cy, px(6), p['red'])
-        ccy_font = font(9, 'semibold')
-        ccy_x = left + px(13)
-        self.create_text(m.x(ccy_x), cy, text=e.currency, anchor=m.a('w'), fill=p['soft'], font=ccy_font)
-        title_x = ccy_x + fitter.measure(ccy_font, e.currency) + px(8)
-        title_font = font(10, 'semibold')
-        meta = f'  ·  {e.forecast}' if e.forecast else ''
-        avail = max(px(60), right - title_x - reserve)
-        self.create_text(
-            m.x(title_x),
-            cy,
-            text=fitter.fit(title_font, e.title + meta, avail),
-            anchor=m.a('w'),
-            fill=p['text'],
-            font=title_font,
-        )
+        width, count = self._slot_width(w)
+        cf, ccy_font, title_font = num(12, 'bold'), font(9, 'semibold'), font(10, 'semibold')
+        for i, e in enumerate(self.events[:count]):
+            x0 = i * width
+            left, right = x0 + px(12), x0 + width - px(10)
+            if i:
+                self.create_line(m.x(x0), px(10), m.x(x0), px(self.HEIGHT) - px(10), fill=p['line'])
+            text, colour = self._countdown(e, now)
+            item = self.create_text(m.x(right), cy, text=text, anchor=m.a('e'), fill=colour, font=cf)
+            self.slots.append((e, item, text, colour))
+            reserve = cf.measure('0d 00:00:00' if 'd' in text else '00:00:00') + px(12)
+            dot(self, m.x(left + px(3)), cy, px(6), p['red'])
+            ccy_x = left + px(13)
+            self.create_text(m.x(ccy_x), cy, text=e.currency, anchor=m.a('w'), fill=p['soft'], font=ccy_font)
+            title_x = ccy_x + fitter.measure(ccy_font, e.currency) + px(8)
+            meta = f'  ·  {e.forecast}' if e.forecast else ''
+            avail = max(px(60), right - title_x - reserve)
+            self.create_text(
+                m.x(title_x),
+                cy,
+                text=fitter.fit(title_font, e.title + meta, int(avail)),
+                anchor=m.a('w'),
+                fill=p['text'],
+                font=title_font,
+            )
 
     def tick(self, now):
         self._now = now
-        if self.event is None or self.count_item is None:
-            return
-        text, colour = self._countdown(now)
-        if (text, colour) != (self.count_text, self.count_colour):
-            self.itemconfigure(self.count_item, text=text, fill=colour)
-            self.count_text, self.count_colour = text, colour
+        for i, (e, item, old_text, old_colour) in enumerate(self.slots):
+            text, colour = self._countdown(e, now)
+            if (text, colour) != (old_text, old_colour):
+                self.itemconfigure(item, text=text, fill=colour)
+                self.slots[i] = (e, item, text, colour)
 
 
 @dataclass(slots=True)

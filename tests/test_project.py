@@ -19,6 +19,10 @@ DOCS = [
     'docs/ARCHITECTURE.md',
     'docs/PROVIDERS.md',
     'docs/TRANSLATING.md',
+    'docs/OBS.md',
+    'docs/RELEASING.md',
+    'GOVERNANCE.md',
+    'tests/visual/README.md',
 ]
 LINK = re.compile(r'\]\(([^)\s]+)\)|(?:src|href|srcset)="([^"]+)"')
 
@@ -84,6 +88,14 @@ class ProjectTests(unittest.TestCase):
                 if re.search(r'\bpip install\b', line):
                     hashed = r'--require-hashes -r requirements[\w-]*\.lock'
                     self.assertRegex(line, hashed, f'{script.name}: {line.strip()}')
+
+    def test_every_release_is_in_the_persian_changelog_too(self):
+        english = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        persian = (ROOT / 'CHANGELOG_FA.md').read_text(encoding='utf-8')
+        to_fa = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
+        for major, minor in re.findall(r'(?m)^## \[(\d+)\.(\d+)\.\d+\]', english):
+            heading = f'# تغییرات نسخه {major}.{minor}'.translate(to_fa)
+            self.assertIn(heading, persian, f'CHANGELOG_FA.md has no section for {major}.{minor}')
 
     def test_release_notes_interpolate_version_and_repo(self):
         import sys

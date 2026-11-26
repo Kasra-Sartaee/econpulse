@@ -15,6 +15,7 @@ from pathlib import Path
 # Fixed programs only; never invoked through a shell.
 import subprocess  # nosec B404
 import sys
+import threading
 from urllib.parse import urlsplit
 import webbrowser
 
@@ -323,17 +324,207 @@ def play_alert_sound(widget) -> None:
         pass
 
 
-def is_dnd_active() -> bool:
-    """True when Windows reports Fullscreen / Presentation / Focus Assist Quiet Time."""
+def _notification_state() -> int:
+    """SHQueryUserNotificationState: 2 busy (full screen), 3 full-screen Direct3D,
+    4 presentation mode, 6 Focus Assist quiet time; 0 when unknown or not Windows."""
     if sys.platform != 'win32':
-        return False
+        return 0
     try:
         import ctypes
 
         state = ctypes.c_int(0)
         if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(state)) == 0:
-            # 2=BUSY, 3=RUNNING_D3D_FULL_SCREEN, 4=PRESENTATION_MODE, 6=QUIET_TIME
-            return state.value in (2, 3, 4, 6)
+            return state.value
+    except Exception:
+        pass
+    return 0
+
+
+def is_dnd_active() -> bool:
+    """True when Windows reports Fullscreen / Presentation / Focus Assist Quiet Time."""
+    return _notification_state() in (2, 3, 4, 6)
+
+
+class AppBar:
+    """Dock a window to the top or bottom of its monitor and reserve that strip, as the
+    taskbar does (Windows). Maximised windows then stop short of it.
+
+    If EconPulse ends without undocking (a crash), Windows releases the strip by itself
+    within a second (checked on Windows 11), so it can't leave a dead band on screen.
+    """
+
+    ABM_NEW, ABM_REMOVE, ABM_QUERYPOS, ABM_SETPOS = 0, 1, 2, 3
+    EDGES = {'top': 1, 'bottom': 3}
+    CALLBACK_MESSAGE = 0x8000 + 0x45  # WM_APP-based; required by ABM_NEW
+
+    def __init__(self, window) -> None:
+        self.window = window
+        self.hwnd = 0
+
+    @staticmethod
+    def supported() -> bool:
+        return sys.platform == 'win32'
+
+    @staticmethod
+    def _data():
+        import ctypes
+        from ctypes import wintypes
+
+        class APPBARDATA(ctypes.Structure):
+            _fields_ = [
+                ('cbSize', wintypes.DWORD),
+                ('hWnd', wintypes.HWND),
+                ('uCallbackMessage', wintypes.UINT),
+                ('uEdge', wintypes.UINT),
+                ('rc', wintypes.RECT),
+                ('lParam', wintypes.LPARAM),
+            ]
+
+        return APPBARDATA
+
+    def dock(self, edge: str, height: int) -> tuple[int, int, int, int] | None:
+        """Reserve ``height`` pixels at ``edge`` of the window's monitor; returns the strip."""
+        if not self.supported() or edge not in self.EDGES:
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [
+                    ('cbSize', wintypes.DWORD),
+                    ('rcMonitor', wintypes.RECT),
+                    ('rcWork', wintypes.RECT),
+                    ('dwFlags', wintypes.DWORD),
+                ]
+
+            user32, shell32 = ctypes.windll.user32, ctypes.windll.shell32
+            self.window.update_idletasks()
+            hwnd = user32.GetParent(self.window.winfo_id()) or self.window.winfo_id()
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(info)
+            user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(info))  # nearest monitor
+            data_type = self._data()
+            abd = data_type(ctypes.sizeof(data_type), hwnd, self.CALLBACK_MESSAGE, self.EDGES[edge])
+            if not self.hwnd:
+                if not shell32.SHAppBarMessage(self.ABM_NEW, ctypes.byref(abd)):
+                    return None
+                self.hwnd = hwnd
+            m = info.rcMonitor
+            abd.rc = wintypes.RECT(m.left, m.top, m.right, m.bottom)
+            for message in (self.ABM_QUERYPOS, self.ABM_SETPOS):  # the shell may move it clear of the taskbar
+                if edge == 'top':
+                    abd.rc.bottom = abd.rc.top + height
+                else:
+                    abd.rc.top = abd.rc.bottom - height
+                shell32.SHAppBarMessage(message, ctypes.byref(abd))
+            return abd.rc.left, abd.rc.top, abd.rc.right, abd.rc.bottom
+        except Exception:
+            log.warning('could not dock the compact bar', exc_info=True)
+            self.undock()
+            return None
+
+    def undock(self) -> None:
+        if not self.hwnd:
+            return
+        try:
+            import ctypes
+
+            data_type = self._data()
+            abd = data_type(ctypes.sizeof(data_type), self.hwnd)
+            ctypes.windll.shell32.SHAppBarMessage(self.ABM_REMOVE, ctypes.byref(abd))
+        except Exception:
+            pass
+        self.hwnd = 0
+
+
+def fullscreen_app_active() -> bool:
+    """A full-screen game, video or presentation is in front (Windows)."""
+    return _notification_state() in (2, 3, 4)
+
+
+class GlobalHotkey:
+    """A system-wide shortcut (Windows): Ctrl+Alt+<key> calls ``callback`` from anywhere.
+
+    Windows posts the hotkey to the thread that registered it, so registration and the
+    message loop live on a small thread of their own. ``callback`` runs on that thread:
+    hand the work to Tk's thread (EconPulse puts it on ``ui_queue``).
+    """
+
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x0001, 0x0002, 0x4000
+    WM_HOTKEY, WM_QUIT, PM_NOREMOVE = 0x0312, 0x0012, 0x0000
+
+    def __init__(self, key: str, callback) -> None:
+        self.vk = ord(key.upper())
+        self.callback = callback
+        self._thread = None
+        self._thread_id = 0
+        self._ready = threading.Event()
+        self.ok = False
+
+    @staticmethod
+    def supported() -> bool:
+        return sys.platform == 'win32'
+
+    def start(self) -> bool:
+        """Register the shortcut; False if it can't be (another app already uses it)."""
+        if not self.supported():
+            return False
+        self._thread = threading.Thread(target=self._run, daemon=True, name='global-hotkey')
+        self._thread.start()
+        self._ready.wait(2)
+        return self.ok
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        try:
+            import ctypes
+
+            ctypes.windll.user32.PostThreadMessageW(self._thread_id, self.WM_QUIT, 0, 0)
+        except Exception:
+            pass
+        self._thread.join(1)
+        self._thread = None
+
+    def _run(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        msg = wintypes.MSG()
+        self._thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, self.PM_NOREMOVE)  # create the message queue
+        self.ok = bool(user32.RegisterHotKey(None, 1, self.MOD_CONTROL | self.MOD_ALT | self.MOD_NOREPEAT, self.vk))
+        self._ready.set()
+        if not self.ok:
+            return
+        try:
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == self.WM_HOTKEY:
+                    try:
+                        self.callback()
+                    except Exception:
+                        log.exception('global shortcut action failed')
+        finally:
+            user32.UnregisterHotKey(None, 1)
+
+
+def high_contrast_active() -> bool:
+    """True when Windows' own High Contrast mode is on (Settings > Accessibility > Contrast themes)."""
+    if sys.platform != 'win32':
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class HIGHCONTRASTW(ctypes.Structure):
+            _fields_ = [('cbSize', wintypes.UINT), ('dwFlags', wintypes.DWORD), ('lpszDefaultScheme', wintypes.LPWSTR)]
+
+        info = HIGHCONTRASTW(ctypes.sizeof(HIGHCONTRASTW), 0, None)
+        spi_gethighcontrast, hcf_highcontraston = 0x0042, 0x0001
+        if ctypes.windll.user32.SystemParametersInfoW(spi_gethighcontrast, info.cbSize, ctypes.byref(info), 0):
+            return bool(info.dwFlags & hcf_highcontraston)
     except Exception:
         pass
     return False
@@ -386,19 +577,45 @@ def open_folder(path: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# Secret storage (Windows DPAPI; POSIX relies on 0600 file permissions)
+# Secret storage: Windows DPAPI; on macOS/Linux the system keychain when the optional
+# `keyring` package is installed, otherwise the private (0600) settings file.
 # --------------------------------------------------------------------------
 _DPAPI_PREFIX = 'dpapi:'
+_KEYRING_MARK = 'keyring:'  # stored in settings.json in place of a secret kept in the keychain
+_KEYRING_SERVICE, _KEYRING_NAME = 'EconPulse', 'financecalendar_key'
+_keyring_value: str | None = None  # what the keychain holds, so saves don't rewrite it every time
+
+
+def _keyring():
+    try:
+        import keyring
+    except Exception:  # not installed, or no usable backend
+        return None
+    return keyring
 
 
 def protect_secret(value: str) -> str:
-    """Encrypt a short secret for the current Windows user with DPAPI.
+    """Keep a short secret out of the settings file where the platform allows it.
 
-    Returns plaintext unchanged on non-Windows platforms (where files are
-    written 0600) or if empty.
+    Windows: encrypted for the current user with DPAPI. macOS/Linux: stored in the system
+    keychain (Keychain, Secret Service, KWallet) if `keyring` is installed and works.
+    Otherwise the value is returned unchanged and lives in the private 0600 file.
     """
-    if not value or sys.platform != 'win32' or value.startswith(_DPAPI_PREFIX):
+    global _keyring_value
+    if not value or value.startswith((_DPAPI_PREFIX, _KEYRING_MARK)):
         return value
+    if sys.platform != 'win32':
+        keyring = _keyring()
+        if keyring is None:
+            return value
+        try:
+            if value != _keyring_value:
+                keyring.set_password(_KEYRING_SERVICE, _KEYRING_NAME, value)
+                _keyring_value = value
+            return _KEYRING_MARK
+        except Exception:
+            log.warning('the system keychain is unavailable; keeping the key in the private settings file')
+            return value
     try:
         import ctypes
         from ctypes import wintypes
@@ -425,7 +642,15 @@ def protect_secret(value: str) -> str:
 
 
 def unprotect_secret(value: str) -> str:
-    """Decrypt a DPAPI-protected secret, or pass plaintext through (migration)."""
+    """Read back a protected secret, or pass plaintext through (migration)."""
+    global _keyring_value
+    if value == _KEYRING_MARK:
+        keyring = _keyring()
+        try:
+            _keyring_value = (keyring.get_password(_KEYRING_SERVICE, _KEYRING_NAME) if keyring else None) or ''
+        except Exception:
+            _keyring_value = ''
+        return _keyring_value
     if not isinstance(value, str) or not value.startswith(_DPAPI_PREFIX):
         return value if isinstance(value, str) else ''
     if sys.platform != 'win32':
@@ -450,3 +675,17 @@ def unprotect_secret(value: str) -> str:
             ctypes.windll.kernel32.LocalFree(blob_out.pbData)
     except Exception:
         return ''
+
+
+def forget_secret() -> None:
+    """The key was cleared in Settings: remove it from the system keychain too."""
+    global _keyring_value
+    if sys.platform == 'win32' or not _keyring_value:
+        return
+    keyring = _keyring()
+    try:
+        if keyring is not None:
+            keyring.delete_password(_KEYRING_SERVICE, _KEYRING_NAME)
+    except Exception:
+        pass
+    _keyring_value = None

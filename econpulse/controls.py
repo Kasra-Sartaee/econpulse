@@ -513,7 +513,7 @@ class Segmented(tk.Canvas):
                     h - self.pad,
                     px(6),
                     p['thumb'],
-                    p['line_strong'] if p['thumb'] == '#FFFFFF' else '',
+                    p['thumb_line'],
                 )
             colour = p['text'] if selected or i == self.hover else p['soft']
             self.create_text(

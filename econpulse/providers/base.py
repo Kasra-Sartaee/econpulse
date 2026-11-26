@@ -6,9 +6,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+import hashlib
 import ipaddress
 import json
+from pathlib import Path
 import ssl
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
@@ -64,7 +67,7 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
 
     max_redirections = 3
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req: Request, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Request | None:
         parts = urlsplit(newurl)
         if parts.scheme != 'https' or not _is_public_host(parts.hostname):
             raise ProviderError('refusing an unsafe redirect')
@@ -83,12 +86,14 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
 _OPENER = build_opener(HTTPSHandler(context=_tls_context()), _SafeRedirectHandler())
 
 
-def urlopen(request: Request, timeout: float = 17):
+def urlopen(request: Request, timeout: float = 17) -> Any:
     return _OPENER.open(request, timeout=timeout)
 
 
 class ProviderError(Exception):
     """The provider could not deliver usable data (network, HTTP or format)."""
+
+    retry_after: int | None = None  # seconds the source asked us to wait, if it said
 
 
 class RateLimited(ProviderError):
@@ -118,7 +123,7 @@ class FeedResult:
     notes: list[str] = field(default_factory=list)
 
 
-def _retry_after(value) -> int | None:
+def _retry_after(value: object) -> int | None:
     if not value:
         return None
     value = str(value).strip()
@@ -134,11 +139,11 @@ def _retry_after(value) -> int | None:
 def http_get_json(
     url: str,
     *,
-    params: dict | None = None,
-    headers: dict | None = None,
+    params: dict[str, object] | None = None,
+    headers: dict[str, str] | None = None,
     timeout: float = 17,
     validators: dict[str, str] | None = None,
-):
+) -> Any:
     """GET a JSON document over HTTPS, identifying the app honestly.
 
     Supports gzip decompression (with a hard size cap) and optional HTTP
@@ -195,6 +200,38 @@ def http_get_json(
         raise ProviderError('response is not valid JSON') from None
 
 
+def http_download(url: str, dest: Path, *, max_bytes: int, timeout: float = 60) -> str:
+    """Stream a file over HTTPS to ``dest`` (size-capped); returns its SHA-256 (hex).
+
+    Same rules as :func:`http_get_json`: HTTPS to public hosts only, redirects checked,
+    honest User-Agent. A partial or oversized download is deleted.
+    """
+    parts = urlsplit(url)
+    if parts.scheme != 'https' or not _is_public_host(parts.hostname):
+        raise ProviderError('refusing a non-HTTPS download')
+    # HTTPS scheme and public host are enforced above.
+    request = Request(url, headers={'User-Agent': USER_AGENT})  # noqa: S310  # nosec B310
+    digest, size = hashlib.sha256(), 0
+    try:
+        with urlopen(request, timeout=timeout) as response, dest.open('wb') as out:  # nosec B310
+            while chunk := response.read(1 << 16):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise ProviderError('download too large')
+                digest.update(chunk)
+                out.write(chunk)
+    except HTTPError as exc:
+        dest.unlink(missing_ok=True)
+        raise ProviderError(f'HTTP {exc.code}') from None
+    except (URLError, TimeoutError, OSError) as exc:  # network, or the disk
+        dest.unlink(missing_ok=True)
+        raise ProviderError(f'download failed: {getattr(exc, "reason", exc)}') from None
+    except BaseException:  # too large, or interrupted
+        dest.unlink(missing_ok=True)
+        raise
+    return digest.hexdigest()
+
+
 class Provider:
     """A calendar data source. Subclasses implement :meth:`fetch`."""
 
@@ -205,6 +242,10 @@ class Provider:
     terms_url = ''
     needs_key = False
     has_actuals = True
+    experimental = False  # shown as such in Settings until tested against the live service
 
     def fetch(self, now: datetime, *, key: str = '', timeout: float = 17) -> list[Event]:
         raise NotImplementedError
+
+    def reset(self) -> None:
+        """Drop any in-memory state between fetches (providers that keep some override this)."""

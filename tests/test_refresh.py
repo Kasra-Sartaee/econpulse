@@ -155,6 +155,51 @@ class AppLifecycleTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
+    def test_a_simulated_day_keeps_drawing_and_caches_flat(self):
+        # 24 hours of minute ticks with a fresh feed every 15 minutes: the number of canvas
+        # items, the image and text caches and the pending Tk callbacks must not keep growing.
+        from econpulse.demo import demo_events
+
+        app, clock = self.app, [NOW]
+        app.now = lambda: clock[0]
+        app.show_widget()
+
+        def sizes():
+            canvases = [c for c in (app.main_list.cv, app.widget_list.cv) if c.winfo_exists()]
+            return (
+                sum(len(c.find_all()) for c in canvases),
+                len(theme._images),
+                len(theme.fitter._width) + len(theme.fitter._fit) + len(theme.fitter._wrap),
+                len(self.root.tk.splitlist(self.root.tk.call('after', 'info'))),
+            )
+
+        samples = []
+        for minute in range(24 * 60):
+            clock[0] = NOW + timedelta(minutes=minute)
+            if minute % 15 == 0:
+                app.events = demo_events(clock[0])
+                app.render()
+            app._tick()
+            if minute % 120 == 119:
+                self.root.update_idletasks()
+                samples.append(sizes())
+        items, images, texts, timers = zip(*samples[1:], strict=True)
+        self.assertLessEqual(max(items), min(items) * 1.5 + 50, items)
+        self.assertLessEqual(max(images), theme._IMAGE_CAP)
+        self.assertLessEqual(max(texts), 24000)
+        self.assertLessEqual(max(timers), min(timers) + 5, timers)
+
+    def test_startup_stays_fast(self):
+        # Building every window from scratch in demo mode: the guard is generous (CI machines
+        # vary), so it only catches a real regression, not noise. Locally it takes ~0.2 s.
+        import time
+
+        start = time.perf_counter()
+        self.app.build_full()
+        self.app.show_widget()
+        self.root.update()
+        self.assertLess(time.perf_counter() - start, 5.0)
+
     def test_rebuilds_do_not_pile_up_search_callbacks(self):
         for _ in range(3):  # theme / language switches rebuild the window
             self.app.build_full()
@@ -202,42 +247,6 @@ class DiagnosticsTests(AppLifecycleTests):
         self.assertNotIn(str(Path.home()), text)
         self.assertIn('failed reading ~', text)
         self.assertIn('EconPulse', text)
-
-
-class BackoffTests(unittest.TestCase):
-    def make(self):
-        from econpulse.app import EconPulse
-
-        app = EconPulse.__new__(EconPulse)
-        app.cfg = {'refresh_minutes': 15}
-        app.failures, app.next_attempt, app.retry_until, app.last_attempt = 0, None, None, None
-        app.now = lambda: NOW
-        return app
-
-    def test_failures_back_off_30_60_120_then_reset(self):
-        app = self.make()
-        waits = []
-        for _ in range(4):
-            app._after_fetch(True)
-            waits.append(int((app.next_attempt - NOW).total_seconds() // 60))
-        self.assertEqual(waits, [30, 60, 120, 120])
-        self.assertFalse(app.refresh_due(NOW + timedelta(minutes=119)))
-        self.assertTrue(app.refresh_due(NOW + timedelta(minutes=120)))
-        app._after_fetch(False)
-        self.assertEqual((app.failures, app.next_attempt), (0, None))
-
-    def test_retry_after_is_honoured(self):
-        app = self.make()
-        app._after_fetch(True, retry_after=3 * 3600)
-        self.assertFalse(app.refresh_due(NOW + timedelta(hours=2, minutes=59)))
-        self.assertTrue(app.refresh_due(NOW + timedelta(hours=3)))
-
-    def test_normal_interval(self):
-        app = self.make()
-        self.assertTrue(app.refresh_due(NOW))
-        app.last_attempt = NOW
-        self.assertFalse(app.refresh_due(NOW + timedelta(minutes=14)))
-        self.assertTrue(app.refresh_due(NOW + timedelta(minutes=15)))
 
 
 class StartupRepairTests(unittest.TestCase):

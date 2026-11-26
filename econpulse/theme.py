@@ -44,6 +44,7 @@ DARK = dict(
     primary_fg='#0F1012',
     seg='#18191C',
     thumb='#2B2C31',
+    thumb_line='',  # outline of the selected segment, where the pill alone isn't distinct enough
     red='#F2555A',
     amber='#E9A53E',
     green='#3FCF8E',
@@ -73,6 +74,7 @@ LIGHT = dict(
     primary_fg='#FFFFFF',
     seg='#EBEBEE',
     thumb='#FFFFFF',
+    thumb_line='#D6D6DB',
     red='#D93D42',
     amber='#B4730A',
     green='#18885A',
@@ -82,18 +84,58 @@ LIGHT = dict(
     white='#FFFFFF',
     shadow='#000000',
 )
+# High contrast: pure black and white with bright accents. Every text colour is at
+# least 7:1 against the background (WCAG AAA). Used automatically when Windows'
+# own High Contrast mode is on.
+CONTRAST = dict(
+    bg='#000000',
+    side='#000000',
+    card='#000000',
+    raised='#262626',
+    inset='#000000',
+    line='#6E6E6E',
+    line_strong='#BFBFBF',
+    text='#FFFFFF',
+    soft='#E8E8E8',
+    faded='#C2C2C2',
+    hover='#1F1F1F',
+    row_hover='#141414',
+    input='#000000',
+    track='#6E6E6E',
+    primary='#FFFF00',
+    primary_hover='#FFFF80',
+    primary_fg='#000000',
+    seg='#141414',
+    thumb='#555555',
+    thumb_line='#FFFFFF',
+    red='#FF7A7A',
+    amber='#FFD84D',
+    green='#5CFFA0',
+    purple='#D6BCFF',
+    blue='#8FCBFF',
+    now='#FF7A7A',
+    white='#FFFFFF',
+    shadow='#000000',
+)
 SEV_COLOR = {'High': 'red', 'Medium': 'amber', 'Low': 'faded', 'Holiday': 'purple'}
 IMPACT_LEVEL = {'High': 3, 'Medium': 2, 'Low': 1}
 
 
 def palette(name: str) -> dict:
-    return DARK if name == 'dark' else LIGHT
+    return {'dark': DARK, 'contrast': CONTRAST}.get(name, LIGHT)
+
+
+def is_dark(name: str) -> bool:
+    """Whether a theme wants a dark native title bar."""
+    return name in ('dark', 'contrast')
 
 
 # --------------------------------------------------------------------------
 # HiDPI
 # --------------------------------------------------------------------------
-_scale = 1.0
+_scale = 1.0  # physical pixels per logical pixel: screen DPI x the text-size setting
+_dpi_scale = 1.0
+_zoom = 1.0
 
 
 def enable_dpi_awareness() -> None:
@@ -117,12 +159,21 @@ def enable_dpi_awareness() -> None:
 
 
 def init_scale(root: tk.Misc) -> float:
-    global _scale
+    global _scale, _dpi_scale
     try:
-        _scale = max(1.0, min(3.0, root.winfo_fpixels('1i') / 96.0))
+        _dpi_scale = max(1.0, min(3.0, root.winfo_fpixels('1i') / 96.0))
     except tk.TclError:
-        _scale = 1.0
+        _dpi_scale = 1.0
+    _scale = _dpi_scale * _zoom
     return _scale
+
+
+def set_text_size(percent: int) -> None:
+    """Scale text *and* layout together (100, 115 or 130 %), so larger text never
+    overflows a fixed-size row. Windows must be rebuilt to pick it up."""
+    global _zoom, _scale
+    _zoom = max(1.0, min(1.5, percent / 100))
+    _scale = _dpi_scale * _zoom
 
 
 def scale() -> float:
@@ -219,24 +270,24 @@ def font(size: int, weight: str = 'normal') -> tkfont.Font:
     """Shared UI font. weight is 'normal', 'semibold' or 'bold'."""
     _check_root()
     rtl = i18n.rtl()
-    key = ('ui', size, weight, rtl)  # keyed by script: fonts in use are never deleted on a switch
+    key = ('ui', size, weight, rtl, _zoom)  # keyed by script: fonts in use are never deleted on a switch
     cached = _fonts.get(key)
     if cached is None:
         faces = _RTL_FACES if rtl else _DISPLAY_FACES if size >= 14 else _TEXT_FACES
         family, tk_weight = _face(faces, weight)
-        cached = _fonts[key] = tkfont.Font(family=family, size=size, weight=tk_weight)
+        cached = _fonts[key] = tkfont.Font(family=family, size=round(size * _zoom), weight=tk_weight)
     return cached
 
 
 def num(size: int, weight: str = 'normal') -> tkfont.Font:
     """Tabular-figure font for times, countdowns and data values."""
     _check_root()
-    key = ('num', size, weight)
+    key = ('num', size, weight, _zoom)
     cached = _fonts.get(key)
     if cached is None:
         family = _NUMERIC_FACE if _NUMERIC_FACE in _families() else _face(_TEXT_FACES, 'normal')[0]
         cached = _fonts[key] = tkfont.Font(
-            family=family, size=size, weight='bold' if weight in ('bold', 'semibold') else 'normal'
+            family=family, size=round(size * _zoom), weight='bold' if weight in ('bold', 'semibold') else 'normal'
         )
     return cached
 

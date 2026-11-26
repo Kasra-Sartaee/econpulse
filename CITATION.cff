@@ -14,8 +14,8 @@ authors:
 repository-code: https://github.com/Kasra-Sartaee/econpulse
 url: https://kasra-sartaee.github.io/econpulse/
 license: MIT
-version: 3.3.0
-date-released: '2026-11-20'
+version: 3.4.0
+date-released: '2026-11-25'
 keywords:
   - economic calendar
   - forex

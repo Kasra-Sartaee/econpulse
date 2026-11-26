@@ -1,21 +1,25 @@
 """Build the Windows app folder, the release zip and SHA-256 checksums.
 
-    python tools/build_windows.py
+    python tools/build_windows.py              # app folder + zip
+    python tools/build_windows.py --installer  # also the Setup.exe (needs Inno Setup 6)
 
 Used by BUILD_WINDOWS.bat and by the release workflow, so local and published
 builds are made the same way. Output (in dist/):
 
     EconPulse/EconPulse.exe (+ _internal/)   the app; keep the folder together
-    EconPulse-<version>-Windows.zip          the file to share or attach to a release
-    SHA256SUMS.txt                           checksums of the zip
+    EconPulse-<version>-Windows.zip          the portable app, to share or attach to a release
+    EconPulse-<version>-Setup.exe            the installer (with --installer)
+    SHA256SUMS.txt                           checksums of the zip and the installer
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -120,17 +124,45 @@ def make_zip() -> Path:
     return target
 
 
+def find_iscc() -> Path:
+    """Inno Setup's command-line compiler: $ISCC, PATH, or the standard install folders."""
+    candidates = [os.environ.get('ISCC', ''), shutil.which('iscc') or '']
+    for variable in ('ProgramFiles(x86)', 'ProgramFiles', 'LOCALAPPDATA'):
+        base = os.environ.get(variable)
+        if base:
+            candidates.append(str(Path(base) / 'Inno Setup 6' / 'ISCC.exe'))
+            candidates.append(str(Path(base) / 'Programs' / 'Inno Setup 6' / 'ISCC.exe'))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    raise SystemExit('--installer needs Inno Setup 6 (https://jrsoftware.org/isinfo.php); or set ISCC to ISCC.exe')
+
+
+def make_installer() -> Path:
+    script = ROOT / 'installer' / 'EconPulse.iss'
+    subprocess.run([str(find_iscc()), f'/DAppVersion={__version__}', '/Q', str(script)], check=True)
+    return DIST / f'EconPulse-{__version__}-Setup.exe'
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--installer', action='store_true', help='also build the Setup.exe with Inno Setup 6')
+    args = parser.parse_args()
     if APP.exists():
         shutil.rmtree(APP)
     pyinstaller()
     bundled = {p.name.lower() for p in (APP / '_internal').iterdir()}
     if 'bs4' in bundled:
         raise SystemExit('unexpected: BeautifulSoup was bundled')
-    archive = make_zip()
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    (DIST / 'SHA256SUMS.txt').write_text(f'{digest}  {archive.name}\n', encoding='utf-8')
-    print(f'\nREADY  {APP / "EconPulse.exe"}\nSHARE  {archive}\nSHA256 {digest}')
+    outputs = [make_zip()]
+    if args.installer:
+        outputs.append(make_installer())
+    sums = ''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in outputs)
+    (DIST / 'SHA256SUMS.txt').write_text(sums, encoding='utf-8')
+    print(f'\nREADY  {APP / "EconPulse.exe"}')
+    for path in outputs:
+        print(f'SHARE  {path}')
+    print(sums, end='')
 
 
 if __name__ == '__main__':

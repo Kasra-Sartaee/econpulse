@@ -14,7 +14,7 @@ from .controls import (
 )
 from .event_list import CompactBar, EventCanvas, NextUp
 from .storage import save_settings
-from .system import native_round
+from .system import AppBar, fullscreen_app_active, native_round
 from .theme import glyph, px, unpx
 
 log = logging.getLogger('econpulse')
@@ -64,7 +64,7 @@ class WidgetWindowMixin:
             return
         tz = self.tz()
         if self.compact_bar is not None and self.compact_bar.winfo_exists():
-            self.compact_bar.set(self.next_high(), tz, self.now())
+            self.compact_bar.set(self.upcoming_high(8), tz, self.now())
             return
         if not self.widget_list:
             return
@@ -136,9 +136,21 @@ class WidgetWindowMixin:
         if compact:
             width, height = px(self.COMPACT_W), px(self.COMPACT_H)
         w.geometry(f'{width}x{height}+{x}+{y}')
+        docked = False
+        dock = self.cfg.get('compact_dock', 'off')
+        if compact and dock != 'off' and AppBar.supported():
+            self.appbar = AppBar(w)
+            strip = self.appbar.dock(dock, px(self.COMPACT_H))
+            if strip:
+                l, t, r, b = strip
+                w.geometry(f'{r - l}x{b - t}+{l}+{t}')
+                w.attributes('-topmost', True)
+                docked = True
+            else:
+                self.appbar = None
         self.apply_icon(w)
         w.bind('<Control-m>', lambda _e: self.toggle_compact_widget())
-        native = native_round(w, p['line_strong'], small=compact)
+        native = False if docked else native_round(w, p['line_strong'], small=compact)
         w.configure(bg=p['line_strong'])
         shell = tk.Frame(w, bg=p['bg'])
         shell.pack(fill='both', expand=True, padx=0 if native else 1, pady=0 if native else 1)
@@ -154,7 +166,7 @@ class WidgetWindowMixin:
                 ('close', self.hide_widget, 'Close'),
             ]:
                 self.icon_btn(controls, icon, func, tip, 28).pack(side='left', padx=(px(2), 0))
-            for drag_target in (shell, self.compact_bar):
+            for drag_target in () if docked else (shell, self.compact_bar):  # a docked bar stays put
                 drag_target.bind('<ButtonPress-1>', self.drag_start)
                 drag_target.bind('<B1-Motion>', self.drag_move)
                 drag_target.bind('<ButtonRelease-1>', self.drag_end)
@@ -332,7 +344,22 @@ class WidgetWindowMixin:
             save_settings(self.cfg)
         self.resize_offset = None
 
+    def undock_compact_bar(self):
+        if getattr(self, 'appbar', None) is not None:
+            self.appbar.undock()  # before the window goes, so the screen strip is released at once
+            self.appbar = None
+
+    def keep_docked_bar_out_of_full_screen(self):
+        """Called every second: a docked bar must not cover a full-screen game, video or slideshow."""
+        if getattr(self, 'appbar', None) is None or not (self.widget and self.widget.winfo_exists()):
+            return
+        on_top = not fullscreen_app_active()
+        if on_top != getattr(self, '_dock_on_top', True):
+            self._dock_on_top = on_top
+            self.widget.attributes('-topmost', on_top)
+
     def _drop_widget(self):
+        self.undock_compact_bar()
         if self.widget and self.widget.winfo_exists():
             self.widget.destroy()
         self.widget = None

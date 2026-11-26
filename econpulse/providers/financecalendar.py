@@ -11,6 +11,7 @@ schedule-only (no figures, 10 requests a day); the Starter plan covers
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from ..core import Event, parse_feed
 from .base import Provider, ProviderError, http_get_json
@@ -45,14 +46,14 @@ COUNTRY_CURRENCY = {
 _IMPACT = {'high': 'High', 'medium': 'Medium', 'low': 'Low'}
 
 
-def _value(value, unit) -> str:
+def _value(value: object, unit: object) -> str:
     if value is None or value == '':
         return ''
     text = str(value).strip()[:40]
     return text + '%' if isinstance(unit, str) and unit.strip().startswith('%') else text
 
 
-def to_records(rows) -> list[dict]:
+def to_records(rows: object) -> list[dict[str, Any]]:
     records = []
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
@@ -95,6 +96,7 @@ class FinanceCalendarProvider(Provider):
     attribution = 'Data: FinanceCalendar.com'
     terms_url = 'https://www.financecalendar.com/api/terms/'
     needs_key = True
+    experimental = True  # built from the API docs; not yet tested with a real key
 
     def fetch(self, now: datetime, *, key: str = '', timeout: float = 17) -> list[Event]:
         if not key:
@@ -106,7 +108,7 @@ class FinanceCalendarProvider(Provider):
             'include': 'holidays',
             'limit': PAGE,
         }
-        records: list[dict] = []
+        records: list[dict[str, Any]] = []
         for page in range(MAX_PAGES):
             body = http_get_json(
                 API, params={**params, 'offset': page * PAGE}, headers={'X-API-Key': key}, timeout=timeout

@@ -1,8 +1,10 @@
 # Pinned, hash-checked tools for linting, security scans, coverage and the release SBOM, used by CI
 # and pre-commit (regenerate with:
-#   python -m piptools compile --generate-hashes --strip-extras --allow-unsafe requirements-dev.in -o requirements-dev.lock)
+#   uv pip compile --universal --python-version 3.11 --generate-hashes requirements-dev.in -o requirements-dev.lock)
 ruff==0.17.6
 bandit[toml]
 pip-audit
 coverage[toml]
 cyclonedx-bom
+mypy==2.4.1
+hypothesis

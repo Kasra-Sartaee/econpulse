@@ -25,13 +25,18 @@ class ExampleProvider(Provider):
     terms_url = 'https://example.org/terms'
     needs_key = False  # True: a key field must be added to Settings
     has_actuals = True  # False: the app shows "Schedule only"
+    experimental = False  # True: labelled "(experimental)" in Settings until tested against the live service
 
     def fetch(self, now: datetime, *, key: str = '', timeout: float = 17) -> list[Event]:
         rows = http_get_json('https://api.example.org/calendar', params={...}, timeout=timeout)
         return parse_feed([to_record(row) for row in rows])
 ```
 
-Register the instance in `econpulse/providers/__init__.py` (`PROVIDERS`) and add its id to the `provider` check in `storage._validators`.
+Register the instance in `econpulse/providers/__init__.py` (`PROVIDERS`) and add its id to the `provider` entry in `storage.SCHEMA`.
+
+A provider that keeps state between fetches (biquote remembers its last full download, so it can refresh only the days that change) must also implement `reset()`, which the tests call between cases.
+
+**Check the API's date-range rules against the live service**, not just its documentation: is `to` inclusive or exclusive, and is a one-day range allowed? biquote's `to` turned out to be an exclusive midnight, and asking for `(start, stop)` silently dropped the last day of every week. `tools/canary.py` now checks this daily; add your source's own assumptions there too.
 
 ### Records
 

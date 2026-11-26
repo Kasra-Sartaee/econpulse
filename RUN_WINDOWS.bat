@@ -27,7 +27,10 @@ if not exist ".venv\installed.lock" (
  if errorlevel 1 goto :failed
  copy /y requirements.lock ".venv\installed.lock" >nul
 )
-start "" ".venv\Scripts\pythonw.exe" main.py --widget
+rem Any arguments are passed to the app (DEMO_WINDOWS.bat uses --demo --full); default: the widget.
+set "ARGS=%*"
+if not defined ARGS set "ARGS=--widget"
+start "" ".venv\Scripts\pythonw.exe" main.py %ARGS%
 endlocal
 exit /b 0
 

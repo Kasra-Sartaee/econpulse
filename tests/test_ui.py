@@ -10,6 +10,7 @@ import contextlib
 from datetime import UTC
 import io
 import os
+from pathlib import Path
 import sys
 import tempfile
 import tkinter as tk
@@ -122,6 +123,103 @@ class DialogTests(AppTestCase):
         self.settle()
         self.assertEqual(state.load_event_notes().get(state.event_key(event)), 'Wait 2 minutes after print')
 
+    def test_release_details_show_the_indicators_history(self):
+        from dataclasses import replace
+        from datetime import timedelta
+
+        from econpulse import history
+
+        event = next(e for e in self.app.events if e.actual and not e.is_holiday)
+        earlier = [
+            replace(event, instant=event.instant - timedelta(days=30 * n), actual=f'{n}.5%', forecast=f'{n}.0%')
+            for n in (1, 2)
+        ]
+        history.record(earlier, event.instant)
+        self.app.event_detail(event)
+        self.settle()
+        texts = [w.cget('text') for w in descendants(self.app.detail_window) if isinstance(w, tk.Label)]
+        self.assertIn('Recent releases', texts)
+        self.assertIn('1.5%', texts)
+        self.assertIn('+0.5 pp', texts)  # the gap for each past release
+
+    def test_global_shortcut_follows_the_setting_and_reports_conflicts(self):
+        started = []
+
+        class FakeHotkey:
+            ok = True
+
+            def __init__(self, key, callback):
+                self.callback = callback
+                started.append(self)
+
+            @staticmethod
+            def supported():
+                return True
+
+            def start(self):
+                return FakeHotkey.ok
+
+            def stop(self):
+                started.remove(self)
+
+        with mock.patch('econpulse.system.GlobalHotkey', FakeHotkey), mock.patch.object(self.app, 'demo', False):
+            self.app.cfg['global_hotkey'] = True
+            self.assertTrue(self.app.apply_global_hotkey())
+            self.assertEqual(len(started), 1)
+            started[0].callback()  # the key press, from the shortcut's thread
+            self.app.ui_queue.get_nowait()()  # ...handled on Tk's thread
+            self.settle()
+            self.assertTrue(self.app.widget.winfo_exists())
+            self.app.cfg['global_hotkey'] = False
+            self.app.apply_global_hotkey()
+            self.assertEqual(started, [])
+            FakeHotkey.ok = False  # another program owns Ctrl+Alt+E
+            self.app.cfg['global_hotkey'] = True
+            self.assertFalse(self.app.apply_global_hotkey())
+            self.assertIsNone(self.app.hotkey)
+
+    def test_new_version_installs_only_in_an_installed_copy_and_only_once_verified(self):
+        import time
+
+        from econpulse import system, updates
+
+        self.app.update_info = ('9.9.9', updates.RELEASES_URL)
+        with mock.patch.object(updates, 'installed_copy', return_value=False):
+            self.app.open_update()  # a portable copy: just the releases page
+        system.safe_open.assert_called_with(updates.RELEASES_URL)
+
+        installer = Path(self.tmp.name) / 'EconPulse-9.9.9-Setup.exe'
+        with (
+            mock.patch.object(updates, 'installed_copy', return_value=True),
+            mock.patch('econpulse.app.messagebox.askyesno', return_value=True),
+            mock.patch.object(updates, 'download_installer', return_value=installer) as download,
+            mock.patch('econpulse.app.subprocess.Popen') as popen,
+            mock.patch.object(self.app, 'quit') as quit_app,
+        ):
+            self.app.open_update()
+            deadline = time.monotonic() + 5
+            while not popen.called and time.monotonic() < deadline:  # downloaded on a worker thread
+                self.app.poll()
+                self.root.update()
+            download.assert_called_once()
+            popen.assert_called_once_with([str(installer), '/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
+            quit_app.assert_called_once()
+
+        with (
+            mock.patch.object(updates, 'installed_copy', return_value=True),
+            mock.patch('econpulse.app.messagebox.askyesno', return_value=True),
+            mock.patch.object(updates, 'download_installer', side_effect=updates.UpdateError('checksum')),
+            mock.patch('econpulse.app.subprocess.Popen') as popen,
+            mock.patch('econpulse.app.messagebox.showerror') as error,
+        ):
+            self.app.open_update()
+            deadline = time.monotonic() + 5
+            while not error.called and time.monotonic() < deadline:
+                self.app.poll()
+                self.root.update()
+            error.assert_called_once()
+            popen.assert_not_called()  # a failed check never runs anything
+
     def test_enter_on_a_focused_button_runs_only_that_button(self):
         event = next(e for e in self.app.events if not e.is_holiday)
         self.app.event_detail(event)
@@ -211,6 +309,30 @@ class DialogTests(AppTestCase):
         button(self.app.setting_window, 'cancel').cmd()
         self.settle()
 
+    def test_high_contrast_and_larger_text_rebuild_every_window(self):
+        self.app.settings()
+        self.settle()
+        window = self.app.setting_window
+        segmented(window, 'contrast').command('contrast')
+        segmented(window, '130').command('130')
+        button(window, 'save').cmd()
+        self.settle()
+        try:
+            self.assertEqual(self.app.p, theme.palette('contrast'))
+            self.assertAlmostEqual(theme.scale(), theme._dpi_scale * 1.3)  # layout grows with the text
+            self.assertGreater(theme.font(10).actual('size'), 10)  # text really is larger
+            self.app.show_widget()
+            self.app.event_detail(next(e for e in self.app.events if not e.is_holiday))
+            self.app.notes()
+            self.settle()
+        finally:
+            theme.set_text_size(100)  # module-level state: restore for the other tests
+
+    def test_windows_high_contrast_mode_wins_over_the_chosen_theme(self):
+        with mock.patch('econpulse.system.high_contrast_active', return_value=True):
+            self.assertEqual(self.app.theme_name(), 'contrast')
+        self.assertEqual(self.app.theme_name(), self.app.cfg['theme'])
+
     def test_settings_window_is_reused_and_cancel_discards_changes(self):
         self.app.settings()
         first = self.app.setting_window
@@ -295,6 +417,39 @@ class WidgetTests(AppTestCase):
         self.settle()
         self.assertTrue(self.app.widget.winfo_exists())
 
+    def test_docked_compact_bar_takes_the_strip_and_gives_it_back(self):
+        calls = []
+
+        class FakeAppBar:
+            def __init__(self, window):
+                self.window = window
+
+            @staticmethod
+            def supported():
+                return True
+
+            def dock(self, edge, height):
+                calls.append(('dock', edge, height))
+                return (0, 0, 1200, height)
+
+            def undock(self):
+                calls.append(('undock',))
+
+        self.app.cfg.update(widget_compact=True, compact_dock='top')
+        with mock.patch('econpulse.ui_widget.AppBar', FakeAppBar):
+            self.app._drop_widget()
+            self.app.show_widget()
+            self.settle()
+            self.assertEqual(calls, [('dock', 'top', theme.px(self.app.COMPACT_H))])
+            self.assertEqual(self.app.widget.winfo_width(), 1200)
+            self.assertEqual(self.app.compact_bar.bind('<B1-Motion>'), '')  # a docked bar can't be dragged
+            with mock.patch('econpulse.ui_widget.fullscreen_app_active', return_value=True):
+                self.app._tick()  # a full-screen video starts: the bar steps back
+            self.assertFalse(self.app.widget.attributes('-topmost'))
+            self.app.hide_widget()
+        self.assertEqual(calls[-1], ('undock',))
+        self.assertIsNone(self.app.appbar)
+
     def test_compact_ticker_bar_mode_toggles_and_ticks(self):
         self.app.toggle_compact_widget()
         self.settle()
@@ -351,17 +506,17 @@ class LiveAppTests(AppTestCase):
         import time
 
         deadline = time.monotonic() + 10
-        while self.app.inflight and time.monotonic() < deadline:
+        while self.app.policy.inflight and time.monotonic() < deadline:
             self.root.update()
             time.sleep(0.02)
         self.app.poll()
         self.settle()
-        self.assertFalse(self.app.inflight)
+        self.assertFalse(self.app.policy.inflight)
 
     def test_refresh_loads_live_events(self):
         self.assertEqual(self.app.state, 'live')
         self.assertEqual(len(self.app.events), 2)
-        self.assertEqual((self.app.failures, self.app.next_attempt), (0, None))
+        self.assertEqual((self.app.policy.failures, self.app.policy.next_attempt), (0, None))
 
     def test_failed_refresh_backs_off_and_honours_retry_after(self):
         from econpulse.providers import RateLimited
@@ -371,19 +526,19 @@ class LiveAppTests(AppTestCase):
             self.wait_for_refresh()
         self.assertEqual(self.app.warning, 'slow down')
         self.assertEqual(self.app.state, 'cached')  # earlier events stay on screen
-        self.assertEqual(self.app.failures, 1)
-        self.assertIsNotNone(self.app.retry_until)
+        self.assertEqual(self.app.policy.failures, 1)
+        self.assertIsNotNone(self.app.policy.retry_until)
         self.app.refresh(force=True)  # too early: explained, not sent
-        self.assertFalse(self.app.inflight)
+        self.assertFalse(self.app.policy.inflight)
         self.assertIn('wait', self.app.warning)
 
     def test_stale_fetch_result_is_discarded_after_supersede(self):
-        old_gen = self.app._fetch_id
-        self.app._fetch_id += 1
-        self.app.inflight = True
+        old_gen = self.app.policy.generation
+        self.app.policy.generation += 1
+        self.app.policy.inflight = True
         self.app.io_queue.put(('ok', old_gen, live_feed(999)))
         self.app.poll()
-        self.assertTrue(self.app.inflight)
+        self.assertTrue(self.app.policy.inflight)
         self.assertEqual(len(self.app.events), 2)
 
     def test_render_stats_respects_other_currencies_setting(self):
@@ -424,10 +579,10 @@ class LiveAppTests(AppTestCase):
             self.app._tick()
             refresh.assert_not_called()  # opt-in: off by default
             self.app.cfg['burst_poll'] = True
-            self.app.failures = 1
+            self.app.policy.failures = 1
             self.app._tick()
             refresh.assert_not_called()  # never while failing / backing off
-            self.app.failures, self.app.has_actuals = 0, False
+            self.app.policy.failures, self.app.has_actuals = 0, False
             self.app._tick()
             refresh.assert_not_called()  # a schedule-only source has nothing to wait for
             self.app.has_actuals = True

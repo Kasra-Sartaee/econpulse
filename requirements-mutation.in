@@ -1,0 +1,6 @@
+# Pinned, hash-checked tools for mutation testing (.github/workflows/mutation.yml; Linux).
+# Regenerate with:
+#   uv pip compile --universal --python-version 3.12 --generate-hashes requirements-mutation.in -o requirements-mutation.lock
+-r requirements.txt
+mutmut==3.8.1
+pytest
