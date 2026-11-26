@@ -52,6 +52,7 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 - Preserved non-major currencies in `settings.json` when toggling filter chips or saving Preferences.
 - The verification command in the release notes now names the real version and repository.
 - Pruning the stored alert history (above 4,000 entries) no longer deletes every entry for provider ids that contain `:` (all biquote ids), which could repeat alerts.
+- At the smallest window size the calendar's Holiday filter and *Hide summary* button were cut off. The impact filters now move to a second line when there isn't room (found by the new visual check).
 
 ## [3.3.0] - 2026-11-20
 

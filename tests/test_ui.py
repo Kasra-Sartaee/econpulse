@@ -92,6 +92,22 @@ class AppTestCase(unittest.TestCase):
         self.root.update_idletasks()
 
 
+class CalendarLayoutTests(AppTestCase):
+    def test_every_filter_stays_reachable_at_the_smallest_window_size(self):
+        """Found by the visual check: at the minimum width Holiday and Hide summary were cut off."""
+        controls = [*self.app.currency_buttons.values(), *self.app.impact_buttons.values(), self.app.summary_toggle]
+        for width, wraps in ((theme.px(1010), True), (theme.px(1600), False)):
+            self.root.geometry(f'{width}x{theme.px(700)}')
+            self.settle()
+            self.settle()  # the first pass moves the impact filters; the second lays them out
+            right_edge = self.root.winfo_rootx() + self.root.winfo_width()
+            for control in controls:
+                self.assertTrue(control.winfo_ismapped(), control)
+                self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), right_edge, control)
+                self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth(), control)  # not squeezed
+            self.assertIs(self.app.filters_wrapped, wraps, width)
+
+
 class DialogTests(AppTestCase):
     def test_release_details_open_for_every_kind_of_event(self):
         events = self.app.events
@@ -445,7 +461,15 @@ class WidgetTests(AppTestCase):
             self.assertEqual(self.app.compact_bar.bind('<B1-Motion>'), '')  # a docked bar can't be dragged
             with mock.patch('econpulse.ui_widget.fullscreen_app_active', return_value=True):
                 self.app._tick()  # a full-screen video starts: the bar steps back
-            self.assertFalse(self.app.widget.attributes('-topmost'))
+            self.assertFalse(self.app._dock_on_top)
+            # Docking is Windows-only; without a window manager (Xvfb) X11 never applies -topmost.
+            if sys.platform == 'win32':
+                self.assertFalse(self.app.widget.attributes('-topmost'))
+            with mock.patch('econpulse.ui_widget.fullscreen_app_active', return_value=False):
+                self.app._tick()  # the video ends: the bar is back on top
+            self.assertTrue(self.app._dock_on_top)
+            if sys.platform == 'win32':
+                self.assertTrue(self.app.widget.attributes('-topmost'))
             self.app.hide_widget()
         self.assertEqual(calls[-1], ('undock',))
         self.assertIsNone(self.app.appbar)

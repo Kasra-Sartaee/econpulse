@@ -394,7 +394,9 @@ class PipelineTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = mock.patch.dict(os.environ, {'APPDATA': self.tmp.name, 'XDG_CONFIG_HOME': self.tmp.name})
+        self.env = mock.patch.dict(
+            os.environ, {'APPDATA': self.tmp.name, 'XDG_CONFIG_HOME': self.tmp.name, 'HOME': self.tmp.name}
+        )
         self.env.start()
 
     def tearDown(self):

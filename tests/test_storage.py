@@ -109,7 +109,7 @@ class AtomicWriteTests(unittest.TestCase):
             note = Path(td) / 'notes.txt'
             storage.safe_write_text(note, 'hello world')
             self.assertEqual(note.read_text(encoding='utf-8'), 'hello world')
-            with mock.patch.dict(os.environ, {'APPDATA': td, 'XDG_CONFIG_HOME': td}):
+            with mock.patch.dict(os.environ, {'APPDATA': td, 'XDG_CONFIG_HOME': td, 'HOME': td}):
                 cfg = {**storage.DEFAULTS, 'financecalendar_key': 'fc_live_secret_key_99'}
                 storage.save_settings(cfg)
                 raw = json.loads((storage.data_dir() / 'settings.json').read_text(encoding='utf-8'))
@@ -142,7 +142,9 @@ class KeychainTests(unittest.TestCase):
         self.patches = [
             mock.patch.dict(sys.modules, {'keyring': fake}),
             mock.patch.object(system.sys, 'platform', 'linux'),
-            mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': self.tmp.name, 'APPDATA': self.tmp.name}),
+            mock.patch.dict(
+                os.environ, {'XDG_CONFIG_HOME': self.tmp.name, 'APPDATA': self.tmp.name, 'HOME': self.tmp.name}
+            ),
         ]
         for patch in self.patches:
             patch.start()

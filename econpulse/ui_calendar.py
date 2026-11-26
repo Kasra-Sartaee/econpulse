@@ -135,20 +135,26 @@ class CalendarWindowMixin:
         else:
             self.summary_gap_before.configure(height=px(16))
 
-        # ---- filters
+        # ---- filters: one row, or two when the window is too narrow for every chip
         filters = tk.Frame(body, bg=p['bg'])
         filters.pack(fill='x')
+        top_row = tk.Frame(filters, bg=p['bg'])  # created before the groups it holds,
+        second_row = tk.Frame(filters, bg=p['bg'])  # so they stack above it and stay visible
+        top_row.pack(fill='x')
+        currencies = tk.Frame(filters, bg=p['bg'])
+        currencies.pack(in_=top_row, side='left')
         self.currency_buttons = {}
         for cur in ('ALL', *CURRENCIES):
             b = self.btn(
-                filters, 'All' if cur == 'ALL' else cur, lambda c=cur: self.toggle_currency(c), 'chip', None, 28, 9
+                currencies, 'All' if cur == 'ALL' else cur, lambda c=cur: self.toggle_currency(c), 'chip', None, 28, 9
             )
             b.pack(side='left', padx=(0, px(2)))
             self.currency_buttons[cur] = b
-        tk.Frame(filters, bg=p['line_strong'], width=1, height=px(16)).pack(side='left', padx=px(10))
+        divider = tk.Frame(filters, bg=p['line_strong'], width=1, height=px(16))
+        impacts = tk.Frame(filters, bg=p['bg'])
         self.impact_buttons = {}
         for imp in ('High', 'Medium', 'Low', 'Holiday'):
-            b = self.btn(filters, imp, lambda a=imp: self.toggle_impact(a), 'chip', None, 28, 9, impact=imp)
+            b = self.btn(impacts, imp, lambda a=imp: self.toggle_impact(a), 'chip', None, 28, 9, impact=imp)
             b.pack(side='left', padx=(0, px(2)))
             self.impact_buttons[imp] = b
         self.summary_toggle = self.btn(
@@ -160,7 +166,35 @@ class CalendarWindowMixin:
             28,
             9,
         )
-        self.summary_toggle.pack(side='right')
+        self.summary_toggle.pack(in_=top_row, side='right')
+
+        def fit_filters(event=None):
+            width = filters.winfo_width()
+            needed = (
+                currencies.winfo_reqwidth()
+                + divider.winfo_reqwidth()
+                + 2 * px(10)
+                + impacts.winfo_reqwidth()
+                + px(12)
+                + self.summary_toggle.winfo_reqwidth()
+            )
+            wrap = 1 < width < needed  # width 1: not laid out yet, so start on one row
+            if wrap == getattr(self, 'filters_wrapped', None):
+                return
+            self.filters_wrapped = wrap
+            divider.pack_forget()
+            impacts.pack_forget()
+            if wrap:
+                second_row.pack(fill='x', pady=(px(6), 0))
+                impacts.pack(in_=second_row, side='left')
+            else:
+                second_row.pack_forget()
+                divider.pack(in_=top_row, side='left', padx=px(10))
+                impacts.pack(in_=top_row, side='left')
+
+        self.filters_wrapped = None
+        fit_filters()  # one row until the first real width arrives
+        filters.bind('<Configure>', fit_filters, add='+')
 
         # ---- table
         self.spacer(body, 12)

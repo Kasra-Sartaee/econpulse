@@ -57,7 +57,7 @@ def render(name, settings, view, step, out: Path) -> Path:
 
     with (
         tempfile.TemporaryDirectory() as profile,
-        mock.patch.dict(os.environ, {'APPDATA': profile, 'XDG_CONFIG_HOME': profile, 'TZ': 'UTC'}),
+        mock.patch.dict(os.environ, {'APPDATA': profile, 'XDG_CONFIG_HOME': profile, 'HOME': profile, 'TZ': 'UTC'}),
         mock.patch.object(app_module, 'demo_events', lambda: demo_events(FIXED_NOW)),
         mock.patch.object(app_module.EconPulse, 'now', lambda self: FIXED_NOW),
         mock.patch.object(app_module.EconPulse, 'tz', lambda self: UTC),
