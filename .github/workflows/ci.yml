@@ -46,6 +46,8 @@ jobs:
   test:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
+    env:
+      PYTHONFAULTHANDLER: '1' # a crash inside Tk prints the Python stack, not just "Segmentation fault"
     strategy:
       fail-fast: false
       matrix:

@@ -168,7 +168,18 @@ class CalendarWindowMixin:
         )
         self.summary_toggle.pack(in_=top_row, side='right')
 
-        def fit_filters(event=None):
+        pending_fit = []
+
+        def schedule_fit(event=None):
+            # Repacking inside a <Configure> handler re-enters Tk's geometry code (fragile on
+            # macOS); do it once the event is handled, and once per burst of resizes.
+            if not pending_fit:
+                pending_fit.append(filters.after_idle(fit_filters))
+
+        def fit_filters():
+            pending_fit.clear()
+            if not filters.winfo_exists():
+                return  # the window was rebuilt or closed meanwhile
             width = filters.winfo_width()
             needed = (
                 currencies.winfo_reqwidth()
@@ -194,7 +205,7 @@ class CalendarWindowMixin:
 
         self.filters_wrapped = None
         fit_filters()  # one row until the first real width arrives
-        filters.bind('<Configure>', fit_filters, add='+')
+        filters.bind('<Configure>', schedule_fit, add='+')
 
         # ---- table
         self.spacer(body, 12)

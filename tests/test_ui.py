@@ -105,7 +105,9 @@ class CalendarLayoutTests(AppTestCase):
                 self.assertTrue(control.winfo_ismapped(), control)
                 self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), right_edge, control)
                 self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth(), control)  # not squeezed
-            self.assertIs(self.app.filters_wrapped, wraps, width)
+            # CI's Windows screen is ~1024 px wide, so a 1600 px window is clamped and still wraps.
+            if self.root.winfo_width() >= width:
+                self.assertIs(self.app.filters_wrapped, wraps, width)
 
 
 class DialogTests(AppTestCase):
