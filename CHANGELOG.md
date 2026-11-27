@@ -4,7 +4,7 @@ All notable changes to EconPulse. The format follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
-## [3.4.0] - 2026-11-25
+## [3.4.0] - 2026-11-27
 
 ### Added
 - **Compact ticker-bar widget mode**: toggleable single-line floating bar (`Ctrl+M`, widget header button, or tray menu) showing the next high-impact release, forecast, and live countdown, plus magnetic edge-snapping and a quick Always-on-Top pin toggle.
