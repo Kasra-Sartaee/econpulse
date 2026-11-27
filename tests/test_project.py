@@ -109,6 +109,32 @@ class ProjectTests(unittest.TestCase):
         self.assertIn(f'EconPulse-{__version__}-Windows.zip', body)
         self.assertIn(REPO, body)
 
+    def test_pypi_readme_has_no_relative_links(self):
+        import re
+        import sys
+
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pypi_readme
+
+        sample = (
+            '<img src="docs/a.png"> <source srcset="docs/b.png"> <a href="LICENSE">x</a> '
+            '[guide](docs/OBS.md#setup) [web](https://example.org/x.png) [top](#install) '
+            '<img src="https://img.shields.io/badge/x">'
+        )
+        out = pypi_readme.absolute(sample, REPO, 'v9.9.9')
+        raw, blob = f'https://raw.githubusercontent.com/{REPO}/v9.9.9/', f'https://github.com/{REPO}/blob/v9.9.9/'
+        self.assertIn(f'src="{raw}docs/a.png"', out)
+        self.assertIn(f'srcset="{raw}docs/b.png"', out)
+        self.assertIn(f'href="{blob}LICENSE"', out)
+        self.assertIn(f']({blob}docs/OBS.md#setup)', out)
+        self.assertIn('](https://example.org/x.png)', out)
+        self.assertIn('](#install)', out)
+        self.assertIn('src="https://img.shields.io/badge/x"', out)
+
+        readme = pypi_readme.absolute((ROOT / 'README.md').read_text(encoding='utf-8'), REPO, 'v1')
+        relative = re.findall(r'(?:\]\(|(?:src|srcset|href)=")(?!https?://|mailto:|#)[^)"\s]+', readme)
+        self.assertEqual(relative, [])
+
 
 if __name__ == '__main__':
     unittest.main()
