@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from econpulse import APP_NAME, REPO
 
 PACKAGE = 'KasraSartaee.EconPulse'
-SCHEMA = '1.10.0'
+SCHEMA = '1.28.0'  # the version microsoft/winget-pkgs asks for (see its PR template)
 HEADER = '# yaml-language-server: $schema=https://aka.ms/winget-manifest.{kind}.{schema}.schema.json\n'
 
 
