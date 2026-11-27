@@ -15,6 +15,7 @@ AppName=EconPulse
 AppVersion={#AppVersion}
 AppVerName=EconPulse {#AppVersion}
 AppPublisher=Aref Hosseini and Kasra Sartaee
+AppCopyright=Copyright (c) 2026 Aref Hosseini, Kasra Sartaee and EconPulse contributors
 AppPublisherURL=https://github.com/Kasra-Sartaee/econpulse
 AppSupportURL=https://github.com/Kasra-Sartaee/econpulse/issues
 AppUpdatesURL=https://github.com/Kasra-Sartaee/econpulse/releases
